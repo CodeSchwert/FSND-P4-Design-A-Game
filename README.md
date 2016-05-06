@@ -103,7 +103,6 @@ This game is based on the popular card game, Concentration!
     - Returns: StringMessage
     - Description: Gets the number of games that are currently active.
 
-
 ##To Implement:
  - **most_consecutive_turns**
     - Path: 'consecutive'
