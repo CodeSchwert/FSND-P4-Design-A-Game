@@ -11,21 +11,26 @@ from protorpc import remote, messages
 from google.appengine.api import memcache
 from google.appengine.api import taskqueue
 # import ndb models
-from models import User, GameP1, GameP2, ScoreP1, ScoreP2
+from models import User, GameP1, ScoreP1#, GameP2,  ScoreP2
 # omport message classes
-from models import GameFormP1, GameFormP2, NewGameForm, ScoreFormP1, \
-    ScoreFormP2, ConsecutiveTurnsForm, UserGameForm, HighScoresP1Form, \
-    HighScoresP2Form
+from models import StringMessage, NewGameFormP1, GameFormP1
+# from models import GameFormP2, NewGameForm, ScoreFormP1, \
+#     ScoreFormP2, ConsecutiveTurnsForm, UserGameForm, HighScoresP1Form, \
+#     HighScoresP2Form, StringMessage
 from utils import get_by_urlsafe
 
-# NEW_GAME_REQUEST = endpoints.ResourceContainer(NewGameForm)
-# GET_GAME_REQUEST = endpoints.ResourceContainer(
-#         urlsafe_game_key=messages.StringField(1),)
+USER_REQUEST = endpoints.ResourceContainer(user_name=messages.StringField(1),
+                                           email=messages.StringField(2))
+NEW_GAME_REQUEST = endpoints.ResourceContainer(NewGameFormP1)
+GET_GAME_P1_REQUEST = endpoints.ResourceContainer(
+    urlsafe_game_key=messages.StringField(1),)
+GET_GAME_P2_REQUEST = endpoints.ResourceContainer(
+    urlsafe_game_key=messages.StringField(1),)
+
 # MAKE_MOVE_REQUEST = endpoints.ResourceContainer(
 #     MakeMoveForm,
 #     urlsafe_game_key=messages.StringField(1),)
-USER_REQUEST = endpoints.ResourceContainer(user_name=messages.StringField(1),
-                                           email=messages.StringField(2))
+
 
 #MEMCACHE_MOVES_REMAINING = 'MOVES_REMAINING'
 
@@ -47,43 +52,41 @@ class ConcentrationGameApi(remote.Service):
         return StringMessage(message='User {} created!'.format(
                 request.user_name))
 
-    # @endpoints.method(request_message=NEW_GAME_REQUEST,
-    #                   response_message=GameForm,
-    #                   path='game',
-    #                   name='new_game',
-    #                   http_method='POST')
-    # def new_game(self, request):
-    #     """Creates new game"""
-    #     user = User.query(User.name == request.user_name).get()
-    #     if not user:
-    #         raise endpoints.NotFoundException(
-    #                 'A User with that name does not exist!')
-    #     try:
-    #         game = Game.new_game(user.key, request.min,
-    #                              request.max, request.attempts)
-    #     except ValueError:
-    #         raise endpoints.BadRequestException('Maximum must be greater '
-    #                                             'than minimum!')
-    #
-    #     # Use a task queue to update the average attempts remaining.
-    #     # This operation is not needed to complete the creation of a new game
-    #     # so it is performed out of sequence.
-    #     taskqueue.add(url='/tasks/cache_average_attempts')
-    #     return game.to_form('Good luck playing Guess a Number!')
-    #
-    # @endpoints.method(request_message=GET_GAME_REQUEST,
-    #                   response_message=GameForm,
-    #                   path='game/{urlsafe_game_key}',
-    #                   name='get_game',
-    #                   http_method='GET')
-    # def get_game(self, request):
-    #     """Return the current game state."""
-    #     game = get_by_urlsafe(request.urlsafe_game_key, Game)
-    #     if game:
-    #         return game.to_form('Time to make a move!')
-    #     else:
-    #         raise endpoints.NotFoundException('Game not found!')
-    #
+    @endpoints.method(request_message=NEW_GAME_REQUEST,
+                      response_message=GameFormP1,
+                      path='game_p1',
+                      name='new_game_p1',
+                      http_method='POST')
+    def new_game_p1(self, request):
+        """Creates new single player game"""
+        user = User.query(User.name == request.user_name).get()
+        if not user:
+            raise endpoints.NotFoundException(
+                    'A User with that name does not exist!')
+        try:
+            game = GameP1.new_game(user.key, request.size)
+        except ValueError:
+            raise endpoints.BadRequestException('Invalid board size. Valid '
+                                                'sizes are 2,4,8.')
+        return game.to_form('Good luck playing Concentration!')
+
+    @endpoints.method(request_message=GET_GAME_P1_REQUEST,
+                      response_message=GameFormP1,
+                      path='gamep1/{urlsafe_game_key}',
+                      name='get_game_p1',
+                      http_method='GET')
+    def get_game_p1(self, request):
+        """Return the current single player game state."""
+        game = get_by_urlsafe(request.urlsafe_game_key, Game)
+        if game:
+            return game.to_form('Time to make a move!')
+        else:
+            raise endpoints.NotFoundException('Game not found!')
+
+
+    """TODO - List all active single player games for a user"""
+
+
     # @endpoints.method(request_message=MAKE_MOVE_REQUEST,
     #                   response_message=GameForm,
     #                   path='game/{urlsafe_game_key}',
