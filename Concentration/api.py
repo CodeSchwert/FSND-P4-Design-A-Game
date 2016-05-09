@@ -54,7 +54,7 @@ class ConcentrationGameApi(remote.Service):
 
     @endpoints.method(request_message=NEW_GAME_REQUEST,
                       response_message=GameFormP1,
-                      path='game_p1',
+                      path='newgamep1',
                       name='new_game_p1',
                       http_method='POST')
     def new_game_p1(self, request):
@@ -77,7 +77,7 @@ class ConcentrationGameApi(remote.Service):
                       http_method='GET')
     def get_game_p1(self, request):
         """Return the current single player game state."""
-        game = get_by_urlsafe(request.urlsafe_game_key, Game)
+        game = get_by_urlsafe(request.urlsafe_game_key, GameP1)
         if game:
             return game.to_form('Time to make a move!')
         else:

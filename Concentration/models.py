@@ -9,6 +9,7 @@ Score -> ScoreP2,ScoreP2
 
 """
 
+import json
 import random
 from datetime import date
 from protorpc import messages
@@ -28,20 +29,39 @@ class GameP1(ndb.Model):
     """Single player game object"""
     user = ndb.KeyProperty(required=True, kind='User')
     size = ndb.IntegerProperty(required=True)
+    card_pairs = ndb.IntegerProperty(required=True)
+    card_map = ndb.JsonProperty(required=True)
     turns = ndb.IntegerProperty(required=True, default=0)
     game_over = ndb.BooleanProperty(required=True, default=False)
+
 
     @classmethod
     def new_game(cls, user, size):
         """Creates and returns a new game"""
         if size not in [2,4,8]:
             raise ValueError('Invalid board size. Valid sizes are 2,4,8.')
-        game = GameP1(user=user, size=size) #, turns=turns, game_over=game_over
+
+        # Build a list of co-ordinate pairs
+        card_map = {}
+        card_pairs = ((size * size) / 2) # 2,8,32 pairs
+        coords = [(x, y) for x in range(size) for y in range(size)]
+        random.shuffle(coords)
+        for pair in range(card_pairs):
+            card_map[str(coords.pop())] = pair
+            card_map[str(coords.pop())] = pair
+        card_map_json = json.dumps(card_map)
+
+        # Create the game
+        game = GameP1(user=user,
+                      size=size,
+                      card_pairs=card_pairs,
+                      card_map=card_map_json)
         game.put()
         return game
 
     def to_form(self, message):
         """Returns a GameForm representation of the Game"""
+        card_map_dict = json.loads(self.card_map)
         form = GameFormP1()
         form.urlsafe_key = self.key.urlsafe()
         form.user_name = self.user.get().name
@@ -49,6 +69,9 @@ class GameP1(ndb.Model):
         form.turns = self.turns
         form.game_over = self.game_over
         form.message = message
+        form.cards = [
+            json.dumps({key: card_map_dict[key]})
+            for key in card_map_dict.keys()]
         return form
 
     def end_game(self, won=False):
@@ -176,6 +199,7 @@ class GameFormP1(messages.Message):
     turns = messages.IntegerField(4, required=True)
     game_over = messages.BooleanField(5, required=True)
     message = messages.StringField(6, required=True)
+    cards = messages.StringField(7, repeated=True) # array of json
 #
 #
 # class GameFormP2(messages.Message):
