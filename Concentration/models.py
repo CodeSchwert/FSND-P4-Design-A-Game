@@ -9,10 +9,12 @@ Score -> ScoreP2,ScoreP2
 
 """
 
+import datetime
 import json
 import random
 from datetime import date
 from protorpc import messages
+from protorpc import message_types
 from google.appengine.ext import ndb
 
 
@@ -31,9 +33,9 @@ class GameP1(ndb.Model):
     size = ndb.IntegerProperty(required=True)
     card_pairs = ndb.IntegerProperty(required=True)
     card_map = ndb.JsonProperty(required=True)
+    card_graveyard = ndb.JsonProperty(required=True)
     turns = ndb.IntegerProperty(required=True, default=0)
     game_over = ndb.BooleanProperty(required=True, default=False)
-
 
     @classmethod
     def new_game(cls, user, size):
@@ -44,18 +46,23 @@ class GameP1(ndb.Model):
         # Build a list of co-ordinate pairs
         card_map = {}
         card_pairs = ((size * size) / 2) # 2,8,32 pairs
+        # create coord for all possible cells on board
         coords = [(x, y) for x in range(size) for y in range(size)]
+        # shuffle the coords and randomly create matching pair
         random.shuffle(coords)
         for pair in range(card_pairs):
             card_map[str(coords.pop())] = pair
             card_map[str(coords.pop())] = pair
+        # save json with an array of coord: value pairs
         card_map_json = json.dumps(card_map)
+        card_graveyard_json = json.dumps({})
 
         # Create the game
         game = GameP1(user=user,
                       size=size,
                       card_pairs=card_pairs,
-                      card_map=card_map_json)
+                      card_map=card_map_json,
+                      card_graveyard=card_graveyard_json)
         game.put()
         return game
 
@@ -81,7 +88,7 @@ class GameP1(ndb.Model):
         self.put()
         # Add the game to the score 'board'
         score = ScoreP1(user=self.user,
-                        date=date.today(),
+                        date=datetime.datetime.now(),
                         won=won,
                         turns=self.turns)
         score.put()
@@ -158,15 +165,17 @@ class GameP1(ndb.Model):
 class ScoreP1(ndb.Model):
     """Score object"""
     user = ndb.KeyProperty(required=True, kind='User')
-    date = ndb.DateProperty(required=True)
+    date = ndb.DateTimeProperty(required=True)
     won = ndb.BooleanProperty(required=True)
     turns = ndb.IntegerProperty(required=True)
 
     def to_form(self):
-        return ScoreFormP1(user_name=self.user.get().name, date=str(self.date),
-                           won=self.won, turns=self.turns)
+        return ScoreFormP1(user_name=self.user.get().name,
+                           date=str(self.date),
+                           won=self.won,
+                           turns=self.turns)
 
-#
+
 # class ScoreP2(ndb.Model):
 #     """Score object"""
 #     user = ndb.KeyProperty(required=True, kind='User')
@@ -200,8 +209,8 @@ class GameFormP1(messages.Message):
     game_over = messages.BooleanField(5, required=True)
     message = messages.StringField(6, required=True)
     cards = messages.StringField(7, repeated=True) # array of json
-#
-#
+
+
 # class GameFormP2(messages.Message):
 #     """GameForm for outbound two player game state information"""
 #     urlsafe_key = messages.StringField(1, required=True)
@@ -214,12 +223,19 @@ class GameFormP1(messages.Message):
 #     size = messages.IntegerField(8, required=True)
 #     game_over = messages.BooleanField(9, required=True)
 #     message = messages.StringField(10, required=True)
-#
 
-# class MakeMoveForm(messages.Message):
-#     """Used to make a move in an existing game"""
-#     x = messages.IntegerField(1, required=True)
-#     y = messages.IntegerField(2, required=True)
+
+class MakeMoveForm(messages.Message):
+    """Used to make a move in an existing game"""
+    x1 = messages.IntegerField(1, required=True)
+    y1 = messages.IntegerField(2, required=True)
+    x2 = messages.IntegerField(3, required=True)
+    y2 = messages.IntegerField(4, required=True)
+
+
+class ActiveGamesForm(messages.Message):
+    """List active games for a user (outbound)"""
+    game = messages.StringField(1, repeated=True)
 
 
 class ScoreFormP1(messages.Message):

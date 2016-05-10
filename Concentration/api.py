@@ -4,16 +4,19 @@ This can also contain game logic. For more complex games it would be wise to
 move game logic to another file. Ideally the API will be simple, concerned
 primarily with communication to/from the API's users."""
 
-
+import datetime
 import logging
 import endpoints
+import json
 from protorpc import remote, messages
+from protorpc import message_types
 from google.appengine.api import memcache
 from google.appengine.api import taskqueue
 # import ndb models
 from models import User, GameP1, ScoreP1#, GameP2,  ScoreP2
-# omport message classes
-from models import StringMessage, NewGameFormP1, GameFormP1
+# import message classes
+from models import StringMessage, NewGameFormP1, GameFormP1, MakeMoveForm, \
+    ActiveGamesForm
 # from models import GameFormP2, NewGameForm, ScoreFormP1, \
 #     ScoreFormP2, ConsecutiveTurnsForm, UserGameForm, HighScoresP1Form, \
 #     HighScoresP2Form, StringMessage
@@ -26,11 +29,11 @@ GET_GAME_P1_REQUEST = endpoints.ResourceContainer(
     urlsafe_game_key=messages.StringField(1),)
 GET_GAME_P2_REQUEST = endpoints.ResourceContainer(
     urlsafe_game_key=messages.StringField(1),)
-
-# MAKE_MOVE_REQUEST = endpoints.ResourceContainer(
-#     MakeMoveForm,
-#     urlsafe_game_key=messages.StringField(1),)
-
+MAKE_MOVE_REQUEST = endpoints.ResourceContainer(
+    MakeMoveForm,
+    urlsafe_game_key=messages.StringField(1),)
+ACTIVE_GAMES_REQUEST = endpoints.ResourceContainer(
+    user_name=messages.StringField(1))
 
 #MEMCACHE_MOVES_REMAINING = 'MOVES_REMAINING'
 
@@ -79,42 +82,73 @@ class ConcentrationGameApi(remote.Service):
         """Return the current single player game state."""
         game = get_by_urlsafe(request.urlsafe_game_key, GameP1)
         if game:
-            return game.to_form('Time to make a move!')
+            if game.game_over:
+                return game.to_form('Game already over!')
+            else:
+                return game.to_form('Time to make a move!')
         else:
             raise endpoints.NotFoundException('Game not found!')
 
+    @endpoints.method(request_message=ACTIVE_GAMES_REQUEST,
+                      response_message=ActiveGamesForm,
+                      path='activegamesp1',
+                      name='active_games_p1',
+                      http_method='GET')
+    def active_games_p1(self, request):
+        """List all active single player games for a user"""
+        user = User.query(User.name == request.user_name).get()
+        if not user:
+            raise endpoints.NotFoundException(
+                    'A User with that name does not exist!')
+        games = GameP1.query(GameP1.user == user.key)
+        #games.filter(GameP1.game_over == False)
+        return ActiveGamesForm(
+            game=[str(g.key) for g in games if g.game_over == False])
 
-    """TODO - List all active single player games for a user"""
+    @endpoints.method(request_message=MAKE_MOVE_REQUEST,
+                      response_message=GameFormP1,
+                      path='gamep1/{urlsafe_game_key}',
+                      name='make_move_p1',
+                      http_method='PUT')
+    def make_move(self, request):
+        """Makes a move. Returns a game state with message"""
+        game = get_by_urlsafe(request.urlsafe_game_key, GameP1)
+        if game.game_over:
+            return game.to_form('Game already over!')
+        # convert card_map from json to dict
+        card_map_dict = json.loads(game.card_map)
+        graveyard_dict = json.loads(game.card_graveyard)
+        # convert coord tuple to string
+        selection1 = str((request.x1, request.y1))
+        selection2 = str((request.x2, request.y2))
+        # check coords are valid / still in play
+        if selection1 == selection2:
+            msg = "Invalid selection - choose 2 different pairs!!"
+            return game.to_form(msg)
+        if selection1 not in card_map_dict or selection2 not in card_map_dict:
+            msg = "Invalid selection: {0}, {1}".format(selection1, selection2)
+            return game.to_form(msg)
+        # check coord associated values match
+        if card_map_dict[selection1] == card_map_dict[selection2]:
+            msg = "Found a pair!!"
+            # move the pair of coords to the 'graveyard'
+            for selection in [selection1, selection2]:
+                graveyard_dict[selection] = card_map_dict[selection]
+                del card_map_dict[selection]
+        else:
+            msg = "The pair don't match ..."
+        # update game state
+        game.turns += 1
+        game.card_map = json.dumps(card_map_dict)
+        game.card_graveyard = json.dumps(graveyard_dict)
+        game.put()
+        # check the game isn't finished
+        if len(card_map_dict) is 0:
+            msg = "Congratulations you found the last pair - Game Over!!"
+            game.end_game(won=True)
+        # return game form
+        return game.to_form(msg)
 
-
-    # @endpoints.method(request_message=MAKE_MOVE_REQUEST,
-    #                   response_message=GameForm,
-    #                   path='game/{urlsafe_game_key}',
-    #                   name='make_move',
-    #                   http_method='PUT')
-    # def make_move(self, request):
-    #     """Makes a move. Returns a game state with message"""
-    #     game = get_by_urlsafe(request.urlsafe_game_key, Game)
-    #     if game.game_over:
-    #         return game.to_form('Game already over!')
-    #
-    #     game.attempts_remaining -= 1
-    #     if request.guess == game.target:
-    #         game.end_game(True)
-    #         return game.to_form('You win!')
-    #
-    #     if request.guess < game.target:
-    #         msg = 'Too low!'
-    #     else:
-    #         msg = 'Too high!'
-    #
-    #     if game.attempts_remaining < 1:
-    #         game.end_game(False)
-    #         return game.to_form(msg + ' Game over!')
-    #     else:
-    #         game.put()
-    #         return game.to_form(msg)
-    #
     # @endpoints.method(response_message=ScoreForms,
     #                   path='scores',
     #                   name='get_scores',
