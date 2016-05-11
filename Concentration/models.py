@@ -34,7 +34,10 @@ class GameP1(ndb.Model):
     card_pairs = ndb.IntegerProperty(required=True)
     card_map = ndb.JsonProperty(required=True)
     card_graveyard = ndb.JsonProperty(required=True)
+    pairs_won = ndb.IntegerProperty(required=True, default=0)
     turns = ndb.IntegerProperty(required=True, default=0)
+    consec_turns = ndb.IntegerProperty(required=True, default=0)
+    consec_turns_temp = ndb.IntegerProperty(required=True, default=0)
     game_over = ndb.BooleanProperty(required=True, default=False)
 
     @classmethod
@@ -42,7 +45,6 @@ class GameP1(ndb.Model):
         """Creates and returns a new game"""
         if size not in [2,4,8]:
             raise ValueError('Invalid board size. Valid sizes are 2,4,8.')
-
         # Build a list of co-ordinate pairs
         card_map = {}
         card_pairs = ((size * size) / 2) # 2,8,32 pairs
@@ -56,7 +58,6 @@ class GameP1(ndb.Model):
         # save json with an array of coord: value pairs
         card_map_json = json.dumps(card_map)
         card_graveyard_json = json.dumps({})
-
         # Create the game
         game = GameP1(user=user,
                       size=size,
@@ -79,6 +80,8 @@ class GameP1(ndb.Model):
         form.cards = [
             json.dumps({key: card_map_dict[key]})
             for key in card_map_dict.keys()]
+        form.pairs_won = self.pairs_won
+        form.consec_turns = self.consec_turns
         return form
 
     def end_game(self, won=False):
@@ -90,53 +93,89 @@ class GameP1(ndb.Model):
         score = ScoreP1(user=self.user,
                         date=datetime.datetime.now(),
                         won=won,
-                        turns=self.turns)
+                        turns=self.turns,
+                        pairs=self.pairs_won)
+        consec_turns = ConsecutiveTurns(user=self.user,
+                                        turns=self.consec_turns,
+                                        size=self.size)
         score.put()
+        consec_turns.put()
 
 
-# class GameP2(ndb.Model):
-#     """Two player game object"""
-#     user1 = ndb.KeyProperty(required=True, kind='User')
-#     user1_turns = ndb.IntegerProperty(required=True)
-#     user1_pairs = ndb.IntegerProperty(required=True)
-#     user2 = ndb.KeyProperty(required=True, kind='User')
-#     user2_turns = ndb.IntegerProperty(required=True)
-#     user2_pairs = ndb.IntegerProperty(required=True)
-#     size = ndb.IntegerProperty(required=True)
-#     game_over = ndb.BooleanProperty(required=True, default=False)
-#
-#     @classmethod
-#     def new_game(cls, user1, user2, size):
-#         """Creates and returns a new game"""
-#         if size not in [2, 4, 8]:
-#             raise ValueError('Invalid board size. Valid sizes are 2,4,8.')
-#         game = GameP1(
-#             user1=user1,
-#             user1_turns=0,
-#             user1_pairs=0,
-#             user2=user2,
-#             user2_turns=0,
-#             user2_pairs=0,
-#             size=size,
-#             game_over=False)
-#         game.put()
-#         return game
-#
-#     def to_form(self, message):
-#         """Returns a GameForm representation of the Game"""
-#         form = GameFormP2()
-#         form.urlsafe_key = self.key.urlsafe()
-#         form.user_name1 = self.user1.get().name
-#         form.user_name1_turns = self.user1_turns
-#         form.user_name1_pairs = self.user1_pairs
-#         form.user_name2 = self.user2.get().name
-#         form.user_name2_turns = self.user2_turns
-#         form.user_name2_pairs = self.user2_pairs
-#         form.size = self.size
-#         form.game_over = self.game_over
-#         form.message = message
-#         return form
-#
+class GameP2(ndb.Model):
+    """Two player game object"""
+    # player 1 variables
+    user1 = ndb.KeyProperty(required=True, kind='User')
+    user1_turns = ndb.IntegerProperty(required=True, default=0)
+    user1_pairs = ndb.IntegerProperty(required=True, default=0)
+    user1_consec_turns = ndb.IntegerProperty(required=True, default=0)
+    user1_consec_temp = ndb.IntegerProperty(required=True, default=0)
+    # player 2 variables
+    user2 = ndb.KeyProperty(required=True, kind='User')
+    user2_turns = ndb.IntegerProperty(required=True, default=0)
+    user2_pairs = ndb.IntegerProperty(required=True, default=0)
+    user2_consec_turns = ndb.IntegerProperty(required=True, default=0)
+    user2_consec_temp = ndb.IntegerProperty(required=True, default=0)
+    # game object variables
+    turns = ndb.IntegerProperty(required=True, default=0)
+    card_pairs = ndb.IntegerProperty(required=True)
+    card_map = ndb.JsonProperty(required=True)
+    card_graveyard = ndb.JsonProperty(required=True)
+    size = ndb.IntegerProperty(required=True)
+    current_turn = ndb.IntegerProperty(required=True)
+    game_over = ndb.BooleanProperty(required=True, default=False)
+
+    @classmethod
+    def new_game(cls, user1, user2, size):
+        """Creates and returns a new game"""
+        if size not in [2, 4, 8]:
+            raise ValueError('Invalid board size. Valid sizes are 2,4,8.')
+        # Build a list of co-ordinate pairs
+        card_map = {}
+        card_pairs = ((size * size) / 2) # 2,8,32 pairs
+        # create coord for all possible cells on board
+        coords = [(x, y) for x in range(size) for y in range(size)]
+        # shuffle the coords and randomly create matching pair
+        random.shuffle(coords)
+        for pair in range(card_pairs):
+            card_map[str(coords.pop())] = pair
+            card_map[str(coords.pop())] = pair
+        # save json with an array of coord: value pairs
+        card_map_json = json.dumps(card_map)
+        card_graveyard_json = json.dumps({})
+        game = GameP2(
+            user1=user1,
+            user2=user2,
+            card_pairs=card_pairs,
+            card_map=card_map_json,
+            card_graveyard=card_graveyard_json,
+            size=size)
+        game.put()
+        return game
+
+    def to_form(self, message):
+        """Returns a GameForm representation of the Game"""
+        card_map_dict = json.loads(self.card_map)
+        form = GameFormP2()
+        form.urlsafe_key = self.key.urlsafe()
+        form.user_name1 = self.user1.get().name
+        form.user_name1_turns = self.user1_turns
+        form.user_name1_pairs = self.user1_pairs
+        form.user_name1_consec_turns = self.user1_consec_turns
+        form.user_name2 = self.user2.get().name
+        form.user_name2_turns = self.user2_turns
+        form.user_name2_pairs = self.user2_pairs
+        form.user_name2_consec_turns = self.user2_consec_turns
+        form.turns = self.turns
+        form.current_turn = self.current_turn
+        form.size = self.size
+        form.cards = [
+            json.dumps({key: card_map_dict[key]})
+            for key in card_map_dict.keys()]
+        form.game_over = self.game_over
+        form.message = message
+        return form
+
 #     def end_game(self, winner=0):
 #         """Ends the game - if won is True, the player won. - if won is False,
 #         the player lost."""
@@ -168,12 +207,14 @@ class ScoreP1(ndb.Model):
     date = ndb.DateTimeProperty(required=True)
     won = ndb.BooleanProperty(required=True)
     turns = ndb.IntegerProperty(required=True)
+    pairs = ndb.IntegerProperty(required=True)
 
     def to_form(self):
         return ScoreFormP1(user_name=self.user.get().name,
                            date=str(self.date),
                            won=self.won,
-                           turns=self.turns)
+                           turns=self.turns,
+                           pairs=self.pairs)
 
 
 # class ScoreP2(ndb.Model):
@@ -191,6 +232,19 @@ class ScoreP1(ndb.Model):
 #                            tie=self.tie)
 #
 
+
+class ConsecutiveTurns(ndb.Model):
+    """Consecutive turns bonus score object"""
+    user = ndb.KeyProperty(required=True, kind='User')
+    turns = ndb.IntegerProperty(required=True)
+    size = ndb.IntegerProperty(required=True)
+
+    def to_form(self):
+        return ConsecutiveTurnsForm(user_name=self.user.get().name,
+                                    turns=self.turns,
+                                    board_size=self.size)
+
+
 """ Message Classes """
 
 
@@ -198,6 +252,13 @@ class NewGameFormP1(messages.Message):
     """Inbound form for creating a new single player game"""
     user_name = messages.StringField(1, required=True)
     size = messages.IntegerField(2, required=True)
+
+
+class NewGameFormP2(messages.Message):
+    """Inbound form for creating a new single player game"""
+    user_name1 = messages.StringField(1, required=True)
+    user_name2 = messages.StringField(2, required=True)
+    size = messages.IntegerField(3, required=True)
 
 
 class GameFormP1(messages.Message):
@@ -209,20 +270,27 @@ class GameFormP1(messages.Message):
     game_over = messages.BooleanField(5, required=True)
     message = messages.StringField(6, required=True)
     cards = messages.StringField(7, repeated=True) # array of json
+    pairs_won = messages.IntegerField(8, required=True)
+    consec_turns = messages.IntegerField(9, required=True)
 
 
-# class GameFormP2(messages.Message):
-#     """GameForm for outbound two player game state information"""
-#     urlsafe_key = messages.StringField(1, required=True)
-#     user_name1 = messages.StringField(2, required=True)
-#     user_name1_turns = messages.IntegerField(3, required=True)
-#     user_name1_pairs = messages.IntegerField(4, required=True)
-#     user_name2 = messages.StringField(5, required=True)
-#     user_name2_turns = messages.IntegerField(6, required=True)
-#     user_name2_pairs = messages.IntegerField(7, required=True)
-#     size = messages.IntegerField(8, required=True)
-#     game_over = messages.BooleanField(9, required=True)
-#     message = messages.StringField(10, required=True)
+class GameFormP2(messages.Message):
+    """GameForm for outbound two player game state information"""
+    urlsafe_key = messages.StringField(1, required=True)
+    user_name1 = messages.StringField(2, required=True)
+    user_name1_turns = messages.IntegerField(3, required=True)
+    user_name1_pairs = messages.IntegerField(4, required=True)
+    user_name1_consec_turns = messages.IntegerField(5, required=True)
+    user_name2 = messages.StringField(6, required=True)
+    user_name2_turns = messages.IntegerField(7, required=True)
+    user_name2_pairs = messages.IntegerField(8, required=True)
+    user_name2_consec_turns= messages.IntegerField(9, required=True)
+    turns = messages.IntegerField(10 ,required=True)
+    current_turn = messages.IntegerField(11, required=True)
+    size = messages.IntegerField(12, required=True)
+    cards = messages.StringField(13, repeated=True) # array of json
+    game_over = messages.BooleanField(14, required=True)
+    message = messages.StringField(15, required=True)
 
 
 class MakeMoveForm(messages.Message):
@@ -244,6 +312,7 @@ class ScoreFormP1(messages.Message):
     date = messages.StringField(2, required=True)
     won = messages.BooleanField(3, required=True)
     turns = messages.IntegerField(4, required=True)
+    pairs = messages.IntegerField(5, required=True)
 
 
 # class ScoreFormP2(messages.Message):
@@ -254,13 +323,13 @@ class ScoreFormP1(messages.Message):
 #     turns = messages.IntegerField(4, required=True)
 #     pairs = messages.IntegerField(5, required=True)
 #     tie = messages.BooleanField(6, required=True)
-#
-#
-# class ScoreFormsP1(messages.Message):
-#     """Return multiple ScoreForms"""
-#     items = messages.MessageField(ScoreFormP1, 1, repeated=True)
-#
-#
+
+
+class ScoreFormsP1(messages.Message):
+    """Return multiple ScoreForms"""
+    items = messages.MessageField(ScoreFormP1, 1, repeated=True)
+
+
 # class ScoreFormsP2(messages.Message):
 #     """Return multiple ScoreForms"""
 #     items = messages.MessageField(ScoreFormP2, 1, repeated=True)
@@ -271,18 +340,18 @@ class StringMessage(messages.Message):
     message = messages.StringField(1, required=True)
 
 
-# class ConsecutiveTurnsForm(messages.Message):
-#     """Returns Consecutive turn information (outbound)"""
-#     user_name = messages.StringField(1, required=True)
-#     turns = messages.IntegerField(2, required=True)
-#     board_size = messages.IntegerField(3, required=True)
-#
-#
-# class ConsecutiveTurnsForms(messages.Message):
-#     """Returns multiple ConsecutiveTurnsForm"""
-#     items = messages.MessageField(ConsecutiveTurnsForm, 1, repeated=True)
-#
-#
+class ConsecutiveTurnsForm(messages.Message):
+    """Returns Consecutive turn information (outbound)"""
+    user_name = messages.StringField(1, required=True)
+    turns = messages.IntegerField(2, required=True)
+    board_size = messages.IntegerField(3, required=True)
+
+
+class ConsecutiveTurnsForms(messages.Message):
+    """Returns multiple ConsecutiveTurnsForm"""
+    items = messages.MessageField(ConsecutiveTurnsForm, 1, repeated=True)
+
+
 # class UserGameForm(messages.Message):
 #     """Returns information about a single active Game"""
 #     user_name = messages.StringField(1, required=True)

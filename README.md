@@ -37,7 +37,7 @@ This game is based on the popular card game, Concentration!
   players have the same amount of pairs.
 
 ###Bonus Stats:
--	Most consecutive turns taken (by matching pairs) ordered by player
+-	Most consecutive turns taken (by matching pairs) ordered by turns.
 
 ##Files Included:
 - api.py: Contains endpoints and game playing logic.

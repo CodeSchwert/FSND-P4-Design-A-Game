@@ -13,18 +13,20 @@ from protorpc import message_types
 from google.appengine.api import memcache
 from google.appengine.api import taskqueue
 # import ndb models
-from models import User, GameP1, ScoreP1#, GameP2,  ScoreP2
+from models import User, GameP1, GameP2, ScoreP1, ConsecutiveTurns#,  ScoreP2
 # import message classes
-from models import StringMessage, NewGameFormP1, GameFormP1, MakeMoveForm, \
-    ActiveGamesForm
-# from models import GameFormP2, NewGameForm, ScoreFormP1, \
+from models import StringMessage, NewGameFormP1, NewGameFormP2, GameFormP1, \
+    GameFormP2, MakeMoveForm, ActiveGamesForm, ConsecutiveTurnsForm, \
+    ConsecutiveTurnsForms, ScoreFormP1, ScoreFormsP1
+# from models import GameFormP2, NewGameForm,  \
 #     ScoreFormP2, ConsecutiveTurnsForm, UserGameForm, HighScoresP1Form, \
-#     HighScoresP2Form, StringMessage
+#     HighScoresP2Form
 from utils import get_by_urlsafe
 
 USER_REQUEST = endpoints.ResourceContainer(user_name=messages.StringField(1),
                                            email=messages.StringField(2))
-NEW_GAME_REQUEST = endpoints.ResourceContainer(NewGameFormP1)
+NEW_GAME_REQUEST_P1 = endpoints.ResourceContainer(NewGameFormP1)
+NEW_GAME_REQUEST_P2 = endpoints.ResourceContainer(NewGameFormP2)
 GET_GAME_P1_REQUEST = endpoints.ResourceContainer(
     urlsafe_game_key=messages.StringField(1),)
 GET_GAME_P2_REQUEST = endpoints.ResourceContainer(
@@ -33,6 +35,8 @@ MAKE_MOVE_REQUEST = endpoints.ResourceContainer(
     MakeMoveForm,
     urlsafe_game_key=messages.StringField(1),)
 ACTIVE_GAMES_REQUEST = endpoints.ResourceContainer(
+    user_name=messages.StringField(1))
+USER_SCORE_REQUEST = endpoints.ResourceContainer(
     user_name=messages.StringField(1))
 
 #MEMCACHE_MOVES_REMAINING = 'MOVES_REMAINING'
@@ -55,7 +59,7 @@ class ConcentrationGameApi(remote.Service):
         return StringMessage(message='User {} created!'.format(
                 request.user_name))
 
-    @endpoints.method(request_message=NEW_GAME_REQUEST,
+    @endpoints.method(request_message=NEW_GAME_REQUEST_P1,
                       response_message=GameFormP1,
                       path='newgamep1',
                       name='new_game_p1',
@@ -101,16 +105,15 @@ class ConcentrationGameApi(remote.Service):
             raise endpoints.NotFoundException(
                     'A User with that name does not exist!')
         games = GameP1.query(GameP1.user == user.key)
-        #games.filter(GameP1.game_over == False)
         return ActiveGamesForm(
-            game=[str(g.key) for g in games if g.game_over == False])
+            game=[(g.key).urlsafe() for g in games if g.game_over == False])
 
     @endpoints.method(request_message=MAKE_MOVE_REQUEST,
                       response_message=GameFormP1,
                       path='gamep1/{urlsafe_game_key}',
                       name='make_move_p1',
                       http_method='PUT')
-    def make_move(self, request):
+    def make_move_p1(self, request):
         """Makes a move. Returns a game state with message"""
         game = get_by_urlsafe(request.urlsafe_game_key, GameP1)
         if game.game_over:
@@ -121,7 +124,9 @@ class ConcentrationGameApi(remote.Service):
         # convert coord tuple to string
         selection1 = str((request.x1, request.y1))
         selection2 = str((request.x2, request.y2))
-        # check coords are valid / still in play
+        # check coords are valid / still in play - the two sanity check blocks
+        # shouldn't be triggered in normal circumstances, so doesn't increment
+        # the turn counter or penalize the player
         if selection1 == selection2:
             msg = "Invalid selection - choose 2 different pairs!!"
             return game.to_form(msg)
@@ -131,12 +136,17 @@ class ConcentrationGameApi(remote.Service):
         # check coord associated values match
         if card_map_dict[selection1] == card_map_dict[selection2]:
             msg = "Found a pair!!"
+            game.pairs_won += 1
+            game.consec_turns_temp += 1
+            if game.consec_turns_temp > game.consec_turns:
+                game.consec_turns = game.consec_turns_temp
             # move the pair of coords to the 'graveyard'
             for selection in [selection1, selection2]:
                 graveyard_dict[selection] = card_map_dict[selection]
                 del card_map_dict[selection]
         else:
             msg = "The pair don't match ..."
+            game.consec_turns_temp = 0
         # update game state
         game.turns += 1
         game.card_map = json.dumps(card_map_dict)
@@ -149,28 +159,50 @@ class ConcentrationGameApi(remote.Service):
         # return game form
         return game.to_form(msg)
 
-    # @endpoints.method(response_message=ScoreForms,
-    #                   path='scores',
-    #                   name='get_scores',
-    #                   http_method='GET')
-    # def get_scores(self, request):
-    #     """Return all scores"""
-    #     return ScoreForms(items=[score.to_form() for score in Score.query()])
-    #
-    # @endpoints.method(request_message=USER_REQUEST,
-    #                   response_message=ScoreForms,
-    #                   path='scores/user/{user_name}',
-    #                   name='get_user_scores',
-    #                   http_method='GET')
-    # def get_user_scores(self, request):
-    #     """Returns all of an individual User's scores"""
-    #     user = User.query(User.name == request.user_name).get()
-    #     if not user:
-    #         raise endpoints.NotFoundException(
-    #                 'A User with that name does not exist!')
-    #     scores = Score.query(Score.user == user.key)
-    #     return ScoreForms(items=[score.to_form() for score in scores])
-    #
+    @endpoints.method(response_message=ScoreFormsP1,
+                      path='scoresp1',
+                      name='get_scores_p1',
+                      http_method='GET')
+    def get_scores_p1(self, request):
+        """Return all single player scores"""
+        return ScoreFormsP1(items=[s.to_form() for s in ScoreP1.query()])
+
+    @endpoints.method(request_message=USER_SCORE_REQUEST,
+                      response_message=ScoreFormsP1,
+                      path='scoresp1/user/{user_name}',
+                      name='get_user_scores_p1',
+                      http_method='GET')
+    def get_user_scores_p1(self, request):
+        """Returns all of an individual User's scores"""
+        user = User.query(User.name == request.user_name).get()
+        if not user:
+            raise endpoints.NotFoundException(
+                    'A User with that name does not exist!')
+        scores = ScoreP1.query(ScoreP1.user == user.key)
+        return ScoreFormsP1(items=[score.to_form() for score in scores])
+
+    """TODO - New P2 game"""
+
+    """TODO - Get P2 game"""
+
+    """TODO - Active P2 games"""
+
+    """TODO - Make move P2 game"""
+
+    """TODO - Get scores P2 game"""
+
+    @endpoints.method(response_message=ConsecutiveTurnsForms,
+                      path='consecutiveturns',
+                      name='get_consecutive_turn_scores',
+                      http_method='GET')
+    def get_consecutive_turn_scores(self, request):
+        """Get a list of all consecutive turn scores"""
+        consec_turns = ConsecutiveTurns.query()\
+            .order(ConsecutiveTurns.turns)\
+            .order(-ConsecutiveTurns.size)
+        return ConsecutiveTurnsForms(
+            items=[ct.to_form() for ct in ConsecutiveTurns.query()])
+
     # @endpoints.method(response_message=StringMessage,
     #                   path='games/average_attempts',
     #                   name='get_average_attempts_remaining',
@@ -178,7 +210,7 @@ class ConcentrationGameApi(remote.Service):
     # def get_average_attempts(self, request):
     #     """Get the cached average moves remaining"""
     #     return StringMessage(message=memcache.get(MEMCACHE_MOVES_REMAINING) or '')
-    #
+
     # @staticmethod
     # def _cache_average_attempts():
     #     """Populates memcache with the average moves remaining of Games"""
