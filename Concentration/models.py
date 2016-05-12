@@ -94,7 +94,8 @@ class GameP1(ndb.Model):
                         date=datetime.datetime.now(),
                         won=won,
                         turns=self.turns,
-                        pairs=self.pairs_won)
+                        pairs=self.pairs_won,
+                        size=self.size)
         consec_turns = ConsecutiveTurns(user=self.user,
                                         turns=self.consec_turns,
                                         size=self.size)
@@ -143,13 +144,16 @@ class GameP2(ndb.Model):
         # save json with an array of coord: value pairs
         card_map_json = json.dumps(card_map)
         card_graveyard_json = json.dumps({})
+        # Randomly choose which player goes first
+        start_player = random.choice([1,2])
         game = GameP2(
             user1=user1,
             user2=user2,
             card_pairs=card_pairs,
             card_map=card_map_json,
             card_graveyard=card_graveyard_json,
-            size=size)
+            size=size,
+            current_turn=start_player)
         game.put()
         return game
 
@@ -176,29 +180,44 @@ class GameP2(ndb.Model):
         form.message = message
         return form
 
-#     def end_game(self, winner=0):
-#         """Ends the game - if won is True, the player won. - if won is False,
-#         the player lost."""
-#         if winner not in [0, 1, 2]:
-#             raise ValueError(
-#                 'Invalid player selection number. Valid values are 0,1,2.')
-#         self.game_over = True
-#         self.put()
-#         # Add the game to the score 'board' for each player
-#         score1 = ScoreP2(user=self.user1, date=date.today(), won=False,
-#                          turns=self.user1_turns, pairs=self.user1_pairs,
-#                          tie=False)
-#         score2 = ScoreP2(user=self.user2, date=date.today(), won=False,
-#                          turns=self.user2_turns, pairs=self.user2_pairs,
-#                          tie=False)
-#         # Update the won flag for the winner
-#         if winner is 0:
-#             score1.tie = True
-#             score2.tie = True
-#         if winner is 1: score1.won = True
-#         if winner is 2: score2.won = True
-#         score1.put()
-#         score2.put()
+    def end_game(self, winner=0):
+        """Ends the game - winner 0 = tied game, otherwise winner = 1 || 2"""
+        if winner not in [0, 1, 2]:
+            raise ValueError(
+                'Invalid player selection number. Valid values are 0,1,2.')
+        self.game_over = True
+        self.put()
+        # Add the game to the score 'board' for each player
+        score1 = ScoreP2(user=self.user1,
+                         date=datetime.datetime.now(),
+                         won=False,
+                         turns=self.user1_turns,
+                         pairs=self.user1_pairs,
+                         tie=False,
+                         size=self.size)
+        conect_turns1 = ConsecutiveTurns(user=self.user,
+                                         turns=self.user1_consec_turns,
+                                         size=self.size)
+        score2 = ScoreP2(user=self.user2,
+                         date=datetime.datetime.now(),
+                         won=False,
+                         turns=self.user2_turns,
+                         pairs=self.user2_pairs,
+                         tie=False,
+                         size=self.size)
+        conect_turns2 = ConsecutiveTurns(user=self.user,
+                                         turns=self.user2_consec_turns,
+                                         size=self.size)
+        # Update the won flag for the winner
+        if winner is 0:
+            score1.tie = True
+            score2.tie = True
+        if winner is 1: score1.won = True
+        if winner is 2: score2.won = True
+        score1.put()
+        score2.put()
+        conect_turns1.put()
+        conect_turns2.put()
 
 
 class ScoreP1(ndb.Model):
@@ -208,29 +227,35 @@ class ScoreP1(ndb.Model):
     won = ndb.BooleanProperty(required=True)
     turns = ndb.IntegerProperty(required=True)
     pairs = ndb.IntegerProperty(required=True)
+    size = ndb.IntegerProperty(required=True)
 
     def to_form(self):
         return ScoreFormP1(user_name=self.user.get().name,
                            date=str(self.date),
                            won=self.won,
                            turns=self.turns,
-                           pairs=self.pairs)
+                           pairs=self.pairs,
+                           size=self.size)
 
 
-# class ScoreP2(ndb.Model):
-#     """Score object"""
-#     user = ndb.KeyProperty(required=True, kind='User')
-#     date = ndb.DateProperty(required=True)
-#     won = ndb.BooleanProperty(required=True)
-#     turns = ndb.IntegerProperty(required=True)
-#     pairs = ndb.IntegerProperty(required=True)
-#     tie = ndb.BooleanProperty(required=True)
-#
-#     def to_form(self):
-#         return ScoreFormP2(user_name=self.user.get().name, date=str(self.date),
-#                            won=self.won, turns=self.turns, pairs=self.pairs,
-#                            tie=self.tie)
-#
+class ScoreP2(ndb.Model):
+    """Score object"""
+    user = ndb.KeyProperty(required=True, kind='User')
+    date = ndb.DateTimeProperty(required=True)
+    won = ndb.BooleanProperty(required=True)
+    turns = ndb.IntegerProperty(required=True)
+    pairs = ndb.IntegerProperty(required=True)
+    tie = ndb.BooleanProperty(required=True)
+    size = ndb.IntegerProperty(required=True)
+
+    def to_form(self):
+        return ScoreFormP2(user_name=self.user.get().name,
+                           date=str(self.date),
+                           won=self.won,
+                           turns=self.turns,
+                           pairs=self.pairs,
+                           tie=self.tie,
+                           size=self.size)
 
 
 class ConsecutiveTurns(ndb.Model):
@@ -293,12 +318,21 @@ class GameFormP2(messages.Message):
     message = messages.StringField(15, required=True)
 
 
-class MakeMoveForm(messages.Message):
+class MakeMoveFormP1(messages.Message):
     """Used to make a move in an existing game"""
     x1 = messages.IntegerField(1, required=True)
     y1 = messages.IntegerField(2, required=True)
     x2 = messages.IntegerField(3, required=True)
     y2 = messages.IntegerField(4, required=True)
+
+
+class MakeMoveFormP2(messages.Message):
+    """Used to make a move in an existing game"""
+    x1 = messages.IntegerField(1, required=True)
+    y1 = messages.IntegerField(2, required=True)
+    x2 = messages.IntegerField(3, required=True)
+    y2 = messages.IntegerField(4, required=True)
+    user_name = messages.StringField(5, required=True)
 
 
 class ActiveGamesForm(messages.Message):
@@ -313,16 +347,18 @@ class ScoreFormP1(messages.Message):
     won = messages.BooleanField(3, required=True)
     turns = messages.IntegerField(4, required=True)
     pairs = messages.IntegerField(5, required=True)
+    size = messages.IntegerField(6, required=True)
 
 
-# class ScoreFormP2(messages.Message):
-#     """ScoreForm for two player outbound Score information"""
-#     user_name = messages.StringField(1, required=True)
-#     date = messages.StringField(2, required=True)
-#     won = messages.BooleanField(3, required=True)
-#     turns = messages.IntegerField(4, required=True)
-#     pairs = messages.IntegerField(5, required=True)
-#     tie = messages.BooleanField(6, required=True)
+class ScoreFormP2(messages.Message):
+    """ScoreForm for two player outbound Score information"""
+    user_name = messages.StringField(1, required=True)
+    date = messages.StringField(2, required=True)
+    won = messages.BooleanField(3, required=True)
+    turns = messages.IntegerField(4, required=True)
+    pairs = messages.IntegerField(5, required=True)
+    tie = messages.BooleanField(6, required=True)
+    size = messages.IntegerField(7, required=True)
 
 
 class ScoreFormsP1(messages.Message):
@@ -330,9 +366,9 @@ class ScoreFormsP1(messages.Message):
     items = messages.MessageField(ScoreFormP1, 1, repeated=True)
 
 
-# class ScoreFormsP2(messages.Message):
-#     """Return multiple ScoreForms"""
-#     items = messages.MessageField(ScoreFormP2, 1, repeated=True)
+class ScoreFormsP2(messages.Message):
+    """Return multiple ScoreForms"""
+    items = messages.MessageField(ScoreFormP2, 1, repeated=True)
 
 
 class StringMessage(messages.Message):

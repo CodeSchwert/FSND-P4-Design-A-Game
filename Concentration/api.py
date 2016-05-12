@@ -13,14 +13,13 @@ from protorpc import message_types
 from google.appengine.api import memcache
 from google.appengine.api import taskqueue
 # import ndb models
-from models import User, GameP1, GameP2, ScoreP1, ConsecutiveTurns#,  ScoreP2
+from models import User, GameP1, GameP2, ScoreP1, ScoreP2, ConsecutiveTurns
 # import message classes
 from models import StringMessage, NewGameFormP1, NewGameFormP2, GameFormP1, \
-    GameFormP2, MakeMoveForm, ActiveGamesForm, ConsecutiveTurnsForm, \
-    ConsecutiveTurnsForms, ScoreFormP1, ScoreFormsP1
-# from models import GameFormP2, NewGameForm,  \
-#     ScoreFormP2, ConsecutiveTurnsForm, UserGameForm, HighScoresP1Form, \
-#     HighScoresP2Form
+    GameFormP2, MakeMoveFormP1, MakeMoveFormP2, ActiveGamesForm, \
+    ConsecutiveTurnsForm, ConsecutiveTurnsForms, ScoreFormP1, ScoreFormsP1, \
+    ScoreFormP2, ScoreFormsP2
+    # UserGameForm, HighScoresP1Form, HighScoresP2Form
 from utils import get_by_urlsafe
 
 USER_REQUEST = endpoints.ResourceContainer(user_name=messages.StringField(1),
@@ -31,8 +30,11 @@ GET_GAME_P1_REQUEST = endpoints.ResourceContainer(
     urlsafe_game_key=messages.StringField(1),)
 GET_GAME_P2_REQUEST = endpoints.ResourceContainer(
     urlsafe_game_key=messages.StringField(1),)
-MAKE_MOVE_REQUEST = endpoints.ResourceContainer(
-    MakeMoveForm,
+MAKE_MOVE_REQUEST_P1 = endpoints.ResourceContainer(
+    MakeMoveFormP1,
+    urlsafe_game_key=messages.StringField(1),)
+MAKE_MOVE_REQUEST_P2 = endpoints.ResourceContainer(
+    MakeMoveFormP2,
     urlsafe_game_key=messages.StringField(1),)
 ACTIVE_GAMES_REQUEST = endpoints.ResourceContainer(
     user_name=messages.StringField(1))
@@ -108,7 +110,7 @@ class ConcentrationGameApi(remote.Service):
         return ActiveGamesForm(
             game=[(g.key).urlsafe() for g in games if g.game_over == False])
 
-    @endpoints.method(request_message=MAKE_MOVE_REQUEST,
+    @endpoints.method(request_message=MAKE_MOVE_REQUEST_P1,
                       response_message=GameFormP1,
                       path='gamep1/{urlsafe_game_key}',
                       name='make_move_p1',
@@ -181,13 +183,124 @@ class ConcentrationGameApi(remote.Service):
         scores = ScoreP1.query(ScoreP1.user == user.key)
         return ScoreFormsP1(items=[score.to_form() for score in scores])
 
-    """TODO - New P2 game"""
+    @endpoints.method(request_message=NEW_GAME_REQUEST_P2,
+                      response_message=GameFormP2,
+                      path='newgamep2',
+                      name='new_game_p2',
+                      http_method='POST')
+    def new_game_p2(self, request):
+        """Create a new two player game"""
+        user1 = User.query(User.name == request.user_name1).get()
+        user2 = User.query(User.name == request.user_name2).get()
+        if not user1 or not user2:
+            raise endpoints.NotFoundException(
+                'A User with that name does not exist!')
+        try:
+            game = GameP2.new_game(user1.key, user2.key, request.size)
+        except ValueError:
+            raise endpoints.BadRequestException('Invalid board size. Valid '
+                                                'sizes are 2,4,8.')
+        return game.to_form('Good luck playing Concentration!')
 
-    """TODO - Get P2 game"""
+    @endpoints.method(request_message=GET_GAME_P2_REQUEST,
+                      response_message=GameFormP2,
+                      path='gamep2/{urlsafe_game_key}',
+                      name='get_game_p2',
+                      http_method='GET')
+    def get_game_p2(self, request):
+        """Get two player game state information"""
+        game = get_by_urlsafe(request.urlsafe_game_key, GameP2)
+        if game:
+            if game.game_over:
+                return game.to_form('Game already over!')
+            else:
+                return game.to_form('Time to make a move!')
+        else:
+            raise endpoints.NotFoundException('Game not found!')
 
-    """TODO - Active P2 games"""
+    @endpoints.method(request_message=ACTIVE_GAMES_REQUEST,
+                      response_message=ActiveGamesForm,
+                      path='activegamesp2',
+                      name='active_games_p2',
+                      http_method='GET')
+    def active_games_p2(self, request):
+        """List all active two player games for a user"""
+        user = User.query(User.name == request.user_name).get()
+        if not user:
+            raise endpoints.NotFoundException(
+                    'A User with that name does not exist!')
+        games = GameP2.query(GameP2.user == user.key)
+        return ActiveGamesForm(
+            game=[(g.key).urlsafe() for g in games if g.game_over == False])
 
-    """TODO - Make move P2 game"""
+    @endpoints.method(request_message=MAKE_MOVE_REQUEST_P2,
+                      response_message=GameFormP2,
+                      path='gamep2/{urlsafe_game_key}',
+                      name='make_move_p2',
+                      http_method='PUT')
+    def make_move_p2(self, request):
+        """Make move in two player game. Returns game state with message"""
+        game = get_by_urlsafe(request.urlsafe_game_key, GameP2)
+        if game.game_over:
+            return game.to_form('Game already over!')
+        user = User.query(User.name == request.user_name).get().key
+        if not user:
+            raise endpoints.NotFoundException(
+                    'A User with that name does not exist!')
+        # convert card_map from json to dict
+        card_map_dict = json.loads(game.card_map)
+        graveyard_dict = json.loads(game.card_graveyard)
+        # convert coord tuple to string
+        selection1 = str((request.x1, request.y1))
+        selection2 = str((request.x2, request.y2))
+        # check coords are valid / still in play - the two sanity check blocks
+        # shouldn't be triggered in normal circumstances, so doesn't increment
+        # the turn counter or penalize the player
+        if selection1 == selection2:
+            msg = "Invalid selection - choose 2 different pairs!!"
+            return game.to_form(msg)
+        if selection1 not in card_map_dict or selection2 not in card_map_dict:
+            msg = "Invalid selection: {0}, {1}".format(selection1, selection2)
+            return game.to_form(msg)
+        # check coord associated values match
+        if card_map_dict[selection1] == card_map_dict[selection2]:
+            # move the pair of coords to the 'graveyard'
+            for selection in [selection1, selection2]:
+                graveyard_dict[selection] = card_map_dict[selection]
+                del card_map_dict[selection]
+            msg = "Found a pair!!"
+            if user == game.user1:
+                game.user1_pairs += 1
+                game.user1_consec_temp += 1
+                if game.user1_consec_temp > game.user1_consec_turns:
+                    game.user1_consec_turns = game.user1_consec_temp
+            if user == game.user2:
+                game.user2_pairs += 1
+                game.user2_consec_temp += 1
+                if game.user2_consec_temp > game.user1_consec_turns:
+                    game.user2_consec_turns = game.user1_consec_temp
+        else:
+            msg = "The pair don't match ..."
+            if user == game.user1:
+                game.user1_consec_temp = 0
+            if user == game.user2:
+                game.user2_consec_temp = 0
+        # Update current plays turn
+        if user == game.user1:
+            game.current_turn = 2
+            winner = 1
+        if user == game.user2:
+            game.current_turn = 1
+            winner = 2
+        game.turns += 1
+        game.card_map = json.dumps(card_map_dict)
+        game.card_graveyard = json.dumps(graveyard_dict)
+        game.put()
+        if len(card_map_dict) is 0:
+            msg = "Congratulations you found the last pair - Game Over!!"
+            game.end_game(winner=winner)
+        # return game form
+        return game.to_form(msg)
 
     """TODO - Get scores P2 game"""
 
