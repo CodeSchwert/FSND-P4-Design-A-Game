@@ -12,6 +12,7 @@ from protorpc import remote, messages
 from protorpc import message_types
 from google.appengine.api import memcache
 from google.appengine.api import taskqueue
+from google.appengine.ext import ndb
 # import ndb models
 from models import User, GameP1, GameP2, ScoreP1, ScoreP2, ConsecutiveTurns
 # import message classes
@@ -19,7 +20,6 @@ from models import StringMessage, NewGameFormP1, NewGameFormP2, GameFormP1, \
     GameFormP2, MakeMoveFormP1, MakeMoveFormP2, ActiveGamesForm, \
     ConsecutiveTurnsForm, ConsecutiveTurnsForms, ScoreFormP1, ScoreFormsP1, \
     ScoreFormP2, ScoreFormsP2
-    # UserGameForm, HighScoresP1Form, HighScoresP2Form
 from utils import get_by_urlsafe
 
 USER_REQUEST = endpoints.ResourceContainer(user_name=messages.StringField(1),
@@ -41,7 +41,6 @@ ACTIVE_GAMES_REQUEST = endpoints.ResourceContainer(
 USER_SCORE_REQUEST = endpoints.ResourceContainer(
     user_name=messages.StringField(1))
 
-#MEMCACHE_MOVES_REMAINING = 'MOVES_REMAINING'
 
 @endpoints.api(name='concentration', version='v1')
 class ConcentrationGameApi(remote.Service):
@@ -108,7 +107,7 @@ class ConcentrationGameApi(remote.Service):
                     'A User with that name does not exist!')
         games = GameP1.query(GameP1.user == user.key)
         return ActiveGamesForm(
-            game=[(g.key).urlsafe() for g in games if g.game_over == False])
+            game=[(g.key).urlsafe() for g in games if g.game_over is False])
 
     @endpoints.method(request_message=MAKE_MOVE_REQUEST_P1,
                       response_message=GameFormP1,
@@ -229,9 +228,10 @@ class ConcentrationGameApi(remote.Service):
         if not user:
             raise endpoints.NotFoundException(
                     'A User with that name does not exist!')
-        games = GameP2.query(GameP2.user == user.key)
+        games = GameP2.query(
+            ndb.OR(GameP2.user1 == user.key, GameP2.user2 == user.key))
         return ActiveGamesForm(
-            game=[(g.key).urlsafe() for g in games if g.game_over == False])
+            game=[(g.key).urlsafe() for g in games if g.game_over is False])
 
     @endpoints.method(request_message=MAKE_MOVE_REQUEST_P2,
                       response_message=GameFormP2,
@@ -247,6 +247,11 @@ class ConcentrationGameApi(remote.Service):
         if not user:
             raise endpoints.NotFoundException(
                     'A User with that name does not exist!')
+        # determine the player making the move
+        player = (1 if user == game.user1 else 2)
+        # check the player is allowed to make a move
+        if player != game.current_turn:
+            return game.to_form('Not your turn yet!!')
         # convert card_map from json to dict
         card_map_dict = json.loads(game.card_map)
         graveyard_dict = json.loads(game.card_graveyard)
@@ -262,6 +267,11 @@ class ConcentrationGameApi(remote.Service):
         if selection1 not in card_map_dict or selection2 not in card_map_dict:
             msg = "Invalid selection: {0}, {1}".format(selection1, selection2)
             return game.to_form(msg)
+        # player attributes
+        player_pairs = 'user{0}_pairs'.format(player)
+        player_turns = 'user{0}_turns'.format(player)
+        player_con_temp = 'user{0}_consec_temp'.format(player)
+        player_con_turns = 'user{0}_consec_turns'.format(player)
         # check coord associated values match
         if card_map_dict[selection1] == card_map_dict[selection2]:
             # move the pair of coords to the 'graveyard'
@@ -269,35 +279,38 @@ class ConcentrationGameApi(remote.Service):
                 graveyard_dict[selection] = card_map_dict[selection]
                 del card_map_dict[selection]
             msg = "Found a pair!!"
-            if user == game.user1:
-                game.user1_pairs += 1
-                game.user1_consec_temp += 1
-                if game.user1_consec_temp > game.user1_consec_turns:
-                    game.user1_consec_turns = game.user1_consec_temp
-            if user == game.user2:
-                game.user2_pairs += 1
-                game.user2_consec_temp += 1
-                if game.user2_consec_temp > game.user1_consec_turns:
-                    game.user2_consec_turns = game.user1_consec_temp
+            # increment pair count for player
+            setattr(game, player_pairs, (getattr(game, player_pairs) + 1))
+            # increment turn count for player
+            setattr(game, player_turns, (getattr(game, player_turns) + 1))
+            # increment consecutive turns counter for player
+            setattr(game, player_con_temp, getattr(game, player_con_temp) + 1)
+            # update player consec turns if needed
+            if (getattr(game, player_con_temp) >
+                    getattr(game, player_con_turns)):
+                setattr(game, player_con_turns, getattr(game, player_con_temp))
+            # update next players turn (current_turn) - take another turn
+            setattr(game, 'current_turn', player)
         else:
-            msg = "The pair don't match ..."
-            if user == game.user1:
-                game.user1_consec_temp = 0
-            if user == game.user2:
-                game.user2_consec_temp = 0
-        # Update current plays turn
-        if user == game.user1:
-            game.current_turn = 2
-            winner = 1
-        if user == game.user2:
-            game.current_turn = 1
-            winner = 2
+            msg = "The pair doesn't match ..."
+            setattr(game, player_turns, (getattr(game, player_turns) + 1))
+            setattr(game, player_con_temp, 0)
+            # update next players turn (current_turn) - next players turn
+            setattr(game, 'current_turn', (1 if player == 2 else 2))
+        # update game "global" variables
         game.turns += 1
         game.card_map = json.dumps(card_map_dict)
         game.card_graveyard = json.dumps(graveyard_dict)
         game.put()
+        # end the game if all cards are removed from play
         if len(card_map_dict) is 0:
             msg = "Congratulations you found the last pair - Game Over!!"
+            # determine winning player - most pairs
+            if game.user1_pairs == game.user2_pairs:
+                winner = 0
+            else:
+                winner = (1 if game.user1_pairs > game.user2_pairs else 2)
+            # end game ...
             game.end_game(winner=winner)
         # return game form
         return game.to_form(msg)

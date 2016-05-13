@@ -43,11 +43,11 @@ class GameP1(ndb.Model):
     @classmethod
     def new_game(cls, user, size):
         """Creates and returns a new game"""
-        if size not in [2,4,8]:
+        if size not in [2, 4, 8]:
             raise ValueError('Invalid board size. Valid sizes are 2,4,8.')
         # Build a list of co-ordinate pairs
         card_map = {}
-        card_pairs = ((size * size) / 2) # 2,8,32 pairs
+        card_pairs = ((size * size) / 2)  # 2,8,32 pairs
         # create coord for all possible cells on board
         coords = [(x, y) for x in range(size) for y in range(size)]
         # shuffle the coords and randomly create matching pair
@@ -133,7 +133,7 @@ class GameP2(ndb.Model):
             raise ValueError('Invalid board size. Valid sizes are 2,4,8.')
         # Build a list of co-ordinate pairs
         card_map = {}
-        card_pairs = ((size * size) / 2) # 2,8,32 pairs
+        card_pairs = ((size * size) / 2)  # 2,8,32 pairs
         # create coord for all possible cells on board
         coords = [(x, y) for x in range(size) for y in range(size)]
         # shuffle the coords and randomly create matching pair
@@ -145,7 +145,7 @@ class GameP2(ndb.Model):
         card_map_json = json.dumps(card_map)
         card_graveyard_json = json.dumps({})
         # Randomly choose which player goes first
-        start_player = random.choice([1,2])
+        start_player = random.choice([1, 2])
         game = GameP2(
             user1=user1,
             user2=user2,
@@ -195,9 +195,6 @@ class GameP2(ndb.Model):
                          pairs=self.user1_pairs,
                          tie=False,
                          size=self.size)
-        conect_turns1 = ConsecutiveTurns(user=self.user,
-                                         turns=self.user1_consec_turns,
-                                         size=self.size)
         score2 = ScoreP2(user=self.user2,
                          date=datetime.datetime.now(),
                          won=False,
@@ -205,19 +202,27 @@ class GameP2(ndb.Model):
                          pairs=self.user2_pairs,
                          tie=False,
                          size=self.size)
-        conect_turns2 = ConsecutiveTurns(user=self.user,
-                                         turns=self.user2_consec_turns,
-                                         size=self.size)
         # Update the won flag for the winner
         if winner is 0:
             score1.tie = True
             score2.tie = True
-        if winner is 1: score1.won = True
-        if winner is 2: score2.won = True
+        if winner is 1:
+            score1.won = True
+        if winner is 2:
+            score2.won = True
         score1.put()
         score2.put()
-        conect_turns1.put()
-        conect_turns2.put()
+        # Record consecutive turn scores
+        if self.user1_consec_turns > 0:
+            consec_turns1 = ConsecutiveTurns(user=self.user1,
+                                             turns=self.user1_consec_turns,
+                                             size=self.size)
+            consec_turns1.put()
+        if self.user2_consec_turns > 0:
+            consec_turns2 = ConsecutiveTurns(user=self.user2,
+                                             turns=self.user2_consec_turns,
+                                             size=self.size)
+            consec_turns2.put()
 
 
 class ScoreP1(ndb.Model):
@@ -294,7 +299,7 @@ class GameFormP1(messages.Message):
     turns = messages.IntegerField(4, required=True)
     game_over = messages.BooleanField(5, required=True)
     message = messages.StringField(6, required=True)
-    cards = messages.StringField(7, repeated=True) # array of json
+    cards = messages.StringField(7, repeated=True)  # array of json
     pairs_won = messages.IntegerField(8, required=True)
     consec_turns = messages.IntegerField(9, required=True)
 
@@ -309,11 +314,11 @@ class GameFormP2(messages.Message):
     user_name2 = messages.StringField(6, required=True)
     user_name2_turns = messages.IntegerField(7, required=True)
     user_name2_pairs = messages.IntegerField(8, required=True)
-    user_name2_consec_turns= messages.IntegerField(9, required=True)
-    turns = messages.IntegerField(10 ,required=True)
+    user_name2_consec_turns = messages.IntegerField(9, required=True)
+    turns = messages.IntegerField(10, required=True)
     current_turn = messages.IntegerField(11, required=True)
     size = messages.IntegerField(12, required=True)
-    cards = messages.StringField(13, repeated=True) # array of json
+    cards = messages.StringField(13, repeated=True)  # array of json
     game_over = messages.BooleanField(14, required=True)
     message = messages.StringField(15, required=True)
 
