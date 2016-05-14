@@ -19,16 +19,14 @@ from models import User, GameP1, GameP2, ScoreP1, ScoreP2, ConsecutiveTurns
 from models import StringMessage, NewGameFormP1, NewGameFormP2, GameFormP1, \
     GameFormP2, MakeMoveFormP1, MakeMoveFormP2, ActiveGamesForm, \
     ConsecutiveTurnsForm, ConsecutiveTurnsForms, ScoreFormP1, ScoreFormsP1, \
-    ScoreFormP2, ScoreFormsP2
+    ScoreFormP2, ScoreFormsP2, UserRanking, UserRankings
 from utils import get_by_urlsafe
 
 USER_REQUEST = endpoints.ResourceContainer(user_name=messages.StringField(1),
                                            email=messages.StringField(2))
 NEW_GAME_REQUEST_P1 = endpoints.ResourceContainer(NewGameFormP1)
 NEW_GAME_REQUEST_P2 = endpoints.ResourceContainer(NewGameFormP2)
-GET_GAME_P1_REQUEST = endpoints.ResourceContainer(
-    urlsafe_game_key=messages.StringField(1),)
-GET_GAME_P2_REQUEST = endpoints.ResourceContainer(
+GET_GAME_REQUEST = endpoints.ResourceContainer(
     urlsafe_game_key=messages.StringField(1),)
 MAKE_MOVE_REQUEST_P1 = endpoints.ResourceContainer(
     MakeMoveFormP1,
@@ -78,7 +76,7 @@ class ConcentrationGameApi(remote.Service):
                                                 'sizes are 2,4,8.')
         return game.to_form('Good luck playing Concentration!')
 
-    @endpoints.method(request_message=GET_GAME_P1_REQUEST,
+    @endpoints.method(request_message=GET_GAME_REQUEST,
                       response_message=GameFormP1,
                       path='gamep1/{urlsafe_game_key}',
                       name='get_game_p1',
@@ -160,6 +158,23 @@ class ConcentrationGameApi(remote.Service):
         # return game form
         return game.to_form(msg)
 
+    @endpoints.method(request_message=GET_GAME_REQUEST,
+                      response_message=GameFormP1,
+                      path='gamep1/cancel/{urlsafe_game_key}',
+                      name='cancel_game_p1',
+                      http_method='GET')
+    def cancel_game_p1(self, request):
+        """Cancel a single player game"""
+        game = get_by_urlsafe(request.urlsafe_game_key, GameP1)
+        if game:
+            if game.game_over:
+                return game.to_form('Game already over!')
+            else:
+                game.end_game()
+                return game.to_form('Game cancelled!!')
+        else:
+            raise endpoints.NotFoundException('Game not found!')
+
     @endpoints.method(response_message=ScoreFormsP1,
                       path='scoresp1',
                       name='get_scores_p1',
@@ -201,7 +216,7 @@ class ConcentrationGameApi(remote.Service):
                                                 'sizes are 2,4,8.')
         return game.to_form('Good luck playing Concentration!')
 
-    @endpoints.method(request_message=GET_GAME_P2_REQUEST,
+    @endpoints.method(request_message=GET_GAME_REQUEST,
                       response_message=GameFormP2,
                       path='gamep2/{urlsafe_game_key}',
                       name='get_game_p2',
@@ -243,12 +258,12 @@ class ConcentrationGameApi(remote.Service):
         game = get_by_urlsafe(request.urlsafe_game_key, GameP2)
         if game.game_over:
             return game.to_form('Game already over!')
-        user = User.query(User.name == request.user_name).get().key
+        user = User.query(User.name == request.user_name).get()
         if not user:
             raise endpoints.NotFoundException(
                     'A User with that name does not exist!')
         # determine the player making the move
-        player = (1 if user == game.user1 else 2)
+        player = (1 if user.key == game.user1 else 2)
         # check the player is allowed to make a move
         if player != game.current_turn:
             return game.to_form('Not your turn yet!!')
@@ -291,17 +306,24 @@ class ConcentrationGameApi(remote.Service):
                 setattr(game, player_con_turns, getattr(game, player_con_temp))
             # update next players turn (current_turn) - take another turn
             setattr(game, 'current_turn', player)
+            # update user model
+            user.turns_p2 += 1
+            user.pairs_p2 += 1
         else:
             msg = "The pair doesn't match ..."
             setattr(game, player_turns, (getattr(game, player_turns) + 1))
             setattr(game, player_con_temp, 0)
             # update next players turn (current_turn) - next players turn
             setattr(game, 'current_turn', (1 if player == 2 else 2))
+            # update user model
+            user.turns_p2 += 1
         # update game "global" variables
         game.turns += 1
         game.card_map = json.dumps(card_map_dict)
         game.card_graveyard = json.dumps(graveyard_dict)
         game.put()
+        # update user model - calculate two player user ranking
+        user.calculate_user_ranking()
         # end the game if all cards are removed from play
         if len(card_map_dict) is 0:
             msg = "Congratulations you found the last pair - Game Over!!"
@@ -315,7 +337,46 @@ class ConcentrationGameApi(remote.Service):
         # return game form
         return game.to_form(msg)
 
-    """TODO - Get scores P2 game"""
+    @endpoints.method(request_message=GET_GAME_REQUEST,
+                      response_message=GameFormP2,
+                      path='gamep2/cancel/{urlsafe_game_key}',
+                      name='cancel_game_p2',
+                      http_method='GET')
+    def cancel_game_p2(self, request):
+        """Cancel a two player game"""
+        game = get_by_urlsafe(request.urlsafe_game_key, GameP2)
+        if game:
+            if game.game_over:
+                return game.to_form('Game already over!')
+            else:
+                game.end_game()
+                return game.to_form('Game cancelled!!')
+        else:
+            raise endpoints.NotFoundException('Game not found!')
+
+    @endpoints.method(response_message=ScoreFormsP2,
+                      path='scoresp2',
+                      name='get_scores_p2',
+                      http_method='GET')
+    def get_scores_p2(self, request):
+        """Returns all two player game scores"""
+        return ScoreFormsP2(items=[s.to_form() for s in ScoreP2.query()])
+
+    @endpoints.method(request_message=USER_SCORE_REQUEST,
+                      response_message=ScoreFormsP2,
+                      path='scoresp2/user/{user_name}',
+                      name='get_user_scores_p2',
+                      http_method='GET')
+    def get_user_scores_p2(self, request):
+        """Get a users two player scores"""
+        user = User.query(User.name == request.user_name).get()
+        if not user:
+            raise endpoints.NotFoundException(
+                    'A User with that name does not exist!')
+        scores = ScoreP2.query(ScoreP2.user == user.key)
+        return ScoreFormsP2(items=[score.to_form() for score in scores])
+
+    """TODO - Game history"""
 
     @endpoints.method(response_message=ConsecutiveTurnsForms,
                       path='consecutiveturns',
@@ -327,7 +388,21 @@ class ConcentrationGameApi(remote.Service):
             .order(ConsecutiveTurns.turns)\
             .order(-ConsecutiveTurns.size)
         return ConsecutiveTurnsForms(
-            items=[ct.to_form() for ct in ConsecutiveTurns.query()])
+            #items=[ct.to_form() for ct in ConsecutiveTurns.query()])
+            items=[ct.to_form() for ct in consec_turns])
+
+    @endpoints.method(response_message=UserRankings,
+                      path='rankings',
+                      name='get_user_rankings',
+                      http_method='GET')
+    def get_user_rankings(self, request):
+        """Two player user ranking - determined by pairs won / turns taken.
+        This method just lists the rankings. Ranking information is updated at
+        the end of each game turn."""
+        user_rankings = User.query().order(User.user_ranking)
+        return UserRankings(
+            rankings=[ur.to_user_ranking_form for ur in user_rankings])
+
 
     # @endpoints.method(response_message=StringMessage,
     #                   path='games/average_attempts',

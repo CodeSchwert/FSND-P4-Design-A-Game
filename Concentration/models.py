@@ -25,6 +25,21 @@ class User(ndb.Model):
     """User profile"""
     name = ndb.StringProperty(required=True)
     email = ndb.StringProperty()
+    turns_p2 = ndb.IntegerProperty(default=0)
+    pairs_p2 = ndb.IntegerProperty(default=0)
+    user_ranking = ndb.FloatProperty(default=0.0)
+
+    def calculate_user_ranking(self):
+        # calculate the users two player user ranking
+        # sanity check to avoid dividing 0 by 0
+        if (turns_p2 > 0) and (pairs_p2 > 0):
+            self.user_ranking = float(self.pairs_p2) / float(self.turns_p2)
+
+    def to_user_ranking_form(self):
+        return UserRanking(user_name=self.name,
+                           user_ranking=self.user_ranking,
+                           turns=self.turns_p2,
+                           pairs=self.pairs_p2)
 
 
 class GameP1(ndb.Model):
@@ -391,6 +406,19 @@ class ConsecutiveTurnsForm(messages.Message):
 class ConsecutiveTurnsForms(messages.Message):
     """Returns multiple ConsecutiveTurnsForm"""
     items = messages.MessageField(ConsecutiveTurnsForm, 1, repeated=True)
+
+
+class UserRanking(messages.Message):
+    """User ranking information"""
+    user_name = messages.StringField(1, required=True)
+    user_ranking messages.FloatField(2, required=True)
+    turns = messages.IntegerField(3, required=True)
+    pairs = messages.IntegerField(4, required=True)
+
+
+class UserRankings(messages.Message):
+    """A list of user rankings"""
+    rankings = messages.MessageField(UserRanking, 1, repeated=True)
 
 
 # class UserGameForm(messages.Message):
