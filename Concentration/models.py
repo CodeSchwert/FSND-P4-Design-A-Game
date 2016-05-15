@@ -3,11 +3,7 @@ entities used by the Game. Because these classes are also regular Python
 classes they can include methods (such as 'to_form' and 'new_game').
 
 Classes modified from reference Udacity project:
-User
-Game -> GameP1,GameP2
-Score -> ScoreP2,ScoreP2
-
-"""
+User, Game, Score & related message classes."""
 
 import datetime
 import json
@@ -27,7 +23,12 @@ class User(ndb.Model):
     email = ndb.StringProperty()
     turns_p2 = ndb.IntegerProperty(default=0)
     pairs_p2 = ndb.IntegerProperty(default=0)
+    games = ndb.IntegerProperty(default=0)
+    wins = ndb.IntegerProperty(default=0)
+    ties = ndb.IntegerProperty(default=0)
     user_ranking = ndb.FloatProperty(default=0.0)
+
+    # def update_user_info(self, result):
 
     def calculate_user_ranking(self):
         # calculate the users two player user ranking
@@ -54,6 +55,7 @@ class GameP1(ndb.Model):
     consec_turns = ndb.IntegerProperty(required=True, default=0)
     consec_turns_temp = ndb.IntegerProperty(required=True, default=0)
     game_over = ndb.BooleanProperty(required=True, default=False)
+    game_history = ndb.PickleProperty(required=True, default=[])
 
     @classmethod
     def new_game(cls, user, size):
@@ -81,6 +83,13 @@ class GameP1(ndb.Model):
                       card_graveyard=card_graveyard_json)
         game.put()
         return game
+
+    def update_game_history(self, player, coord1, coord2, result):
+        """Add a move to the game history list"""
+        move = (self.turns, player, coord1, coord2, result)
+        self.game_history.append(move)
+        # if put is called here, the game object would get saved twice
+        #self.put()
 
     def to_form(self, message):
         """Returns a GameForm representation of the Game"""
@@ -140,6 +149,7 @@ class GameP2(ndb.Model):
     size = ndb.IntegerProperty(required=True)
     current_turn = ndb.IntegerProperty(required=True)
     game_over = ndb.BooleanProperty(required=True, default=False)
+    game_history = ndb.PickleProperty(required=True, default=[])
 
     @classmethod
     def new_game(cls, user1, user2, size):
@@ -171,6 +181,13 @@ class GameP2(ndb.Model):
             current_turn=start_player)
         game.put()
         return game
+
+    def update_game_history(self, player, coord1, coord2, result):
+        """Add a move to the game history list"""
+        move = (self.turns, player, coord1, coord2, result)
+        self.game_history.append(move)
+        # if put is called here, the game object would get saved twice
+        #self.put()
 
     def to_form(self, message):
         """Returns a GameForm representation of the Game"""
@@ -411,7 +428,7 @@ class ConsecutiveTurnsForms(messages.Message):
 class UserRanking(messages.Message):
     """User ranking information"""
     user_name = messages.StringField(1, required=True)
-    user_ranking messages.FloatField(2, required=True)
+    user_ranking = messages.FloatField(2, required=True)
     turns = messages.IntegerField(3, required=True)
     pairs = messages.IntegerField(4, required=True)
 
@@ -421,36 +438,14 @@ class UserRankings(messages.Message):
     rankings = messages.MessageField(UserRanking, 1, repeated=True)
 
 
-# class UserGameForm(messages.Message):
-#     """Returns information about a single active Game"""
-#     user_name = messages.StringField(1, required=True)
-#     urlsafe_key = messages.StringField(2, required=True)
-#     player_turn = messages.IntegerField(3, required=True)
-#     turn = messages.IntegerField(4, required=True)
-#
-#
-# class UserGameForms(messages.Message):
-#     """Returns multiple UserGameForms"""
-#     items = messages.MessageField(UserGameForm, 1, repeated=True)
-#
-#
-# class HighScoresP1Form(messages.Message):
-#     """Returns single player high score information (outbound)"""
-#     user_name = messages.StringField(1, required=True)
-#     turns = messages.IntegerField(2, required=True)
-#
-#
-# class HighScoresP1Forms(messages.Message):
-#     """Returns multiple HighScoresP1Form"""
-#     items = messages.MessageField(HighScoresP1Form, 1, repeated=True)
-#
-#
-# class HighScoresP2Form(messages.Message):
-#     """Returns two player high score information (outbound)"""
-#     user_name = messages.StringField(1, required=True)
-#     pairs= messages.IntegerField(2, required=True)
-#
-#
-# class HighScoresP2Forms(messages.Message):
-#     """Returns multiple HighScoresP2Form"""
-#     items = messages.MessageField(HighScoresP2Form, 1, repeated=True)
+class GameHistoryForm(messages.Message):
+    """Game move - (turn, player, coord1, coord2, result)"""
+    turn = messages.IntegerField(1, required=True)
+    player = messages.IntegerField(2, required=True)
+    coord1 = messages.StringField(3, required=True)
+    coord2 = messages.StringField(4, required=True)
+    result = messages.StringField(5, required=True)
+
+
+class GameHistoryForms(messages.Message):
+    history = messages.MessageField(GameHistoryForm, 1, repeated=True)
