@@ -1,0 +1,44 @@
+What additional properties did you add to your models and why?
+
+- User ranking stats and methods added to the User model. Because it seemed
+  logical to attach all user related stats into the User model, and also made
+  sense to update those stats via User methods. In particular wins and losses
+  needed to be recorded for user rankings.
+
+- On the Game classes, properties for storing game history and also methods for
+  updating game history were added. It seemed like a good place to store all
+  information about a particular game within the game model itself, since in
+  single player or two player games, that game history information would always
+  be available in the same location, the game model.
+
+- The score models had addition properties added to capture wins, losses, ties
+  to enable reporting on the various scores for single and two player games.
+
+
+What were some of the trade-offs or struggles you faced when implementing the
+new game logic?
+
+- Firstly, on what game to implement, because the more the game deviated from
+  the reference code base (guess-a-number) the more work / complexity / time
+  would be required to complete the project. I ultimately decided on
+  Concentration as it was quite a bit more complicated than guess-a-number,
+  especially with two game modes, single and two player mode, but wasn't so
+  complicated that it would takes months to complete (my original idea was a
+  Pokemon / battle style game - with eventually complementing front end). I
+  think the Concentration API would be a good foundation for a Google Cardboard
+  front end / application though.
+
+- There was quite a lot of thought (struggle) in deciding the games modes, but
+  eventually just decided to implement both single and two player modes each
+  with unique high scores.
+
+- The idea of consecutive turns as a high score was appealing but didn't fit
+  into traditional scores for either single or two player games, so decided to
+  implement it as a bonus score for all game modes!
+
+- I don't like writing duplicate code, but given I had decided to implement
+  both single and two player modes, I had to trade-off a lean API for a broader
+  range of endpoints with quite a bit of duplicate code. It seems that this is
+  a problem with API endpoints in general though, where they tend to grow in
+  the number of endpoints and duplicate code as time goes on to support ever
+  growing functionality.

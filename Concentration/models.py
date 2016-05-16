@@ -21,26 +21,41 @@ class User(ndb.Model):
     """User profile"""
     name = ndb.StringProperty(required=True)
     email = ndb.StringProperty()
-    turns_p2 = ndb.IntegerProperty(default=0)
-    pairs_p2 = ndb.IntegerProperty(default=0)
     games = ndb.IntegerProperty(default=0)
     wins = ndb.IntegerProperty(default=0)
     ties = ndb.IntegerProperty(default=0)
+    losses = ndb.IntegerProperty(default=0)
     user_ranking = ndb.FloatProperty(default=0.0)
 
-    # def update_user_info(self, result):
+    def update_user_ranking_info(self, result):
+        """Increment user ranking stats - 1=win, 0=tie, -1=loss"""
+        if result not in [-1, 0, 1]:
+            return
+        else:
+            # valid result, increment played games counter
+            self.games += 1
+            # update win, loss, tie counters
+            if result == 0:
+                self.ties += 1
+            elif result == 1:
+                self.wins += 1
+            elif result == -1:
+                self.losses += 1
+            self.put()
+            # calculate user ranking
+            self.calculate_user_ranking()
 
     def calculate_user_ranking(self):
         # calculate the users two player user ranking
-        # sanity check to avoid dividing 0 by 0
-        if (turns_p2 > 0) and (pairs_p2 > 0):
-            self.user_ranking = float(self.pairs_p2) / float(self.turns_p2)
+        if self.losses != 0:
+            self.user_ranking = (float(self.wins) / float(1)) * 100.0
+        else:
+            self.user_ranking = (float(self.wins) / float(self.losses)) * 100.0
+        self.put()
 
     def to_user_ranking_form(self):
         return UserRanking(user_name=self.name,
-                           user_ranking=self.user_ranking,
-                           turns=self.turns_p2,
-                           pairs=self.pairs_p2)
+                           user_ranking=self.user_ranking)
 
 
 class GameP1(ndb.Model):
@@ -89,7 +104,7 @@ class GameP1(ndb.Model):
         move = (self.turns, player, coord1, coord2, result)
         self.game_history.append(move)
         # if put is called here, the game object would get saved twice
-        #self.put()
+        # self.put()
 
     def to_form(self, message):
         """Returns a GameForm representation of the Game"""
@@ -187,7 +202,7 @@ class GameP2(ndb.Model):
         move = (self.turns, player, coord1, coord2, result)
         self.game_history.append(move)
         # if put is called here, the game object would get saved twice
-        #self.put()
+        # self.put()
 
     def to_form(self, message):
         """Returns a GameForm representation of the Game"""
@@ -429,8 +444,6 @@ class UserRanking(messages.Message):
     """User ranking information"""
     user_name = messages.StringField(1, required=True)
     user_ranking = messages.FloatField(2, required=True)
-    turns = messages.IntegerField(3, required=True)
-    pairs = messages.IntegerField(4, required=True)
 
 
 class UserRankings(messages.Message):

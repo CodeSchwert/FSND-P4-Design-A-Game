@@ -1,30 +1,43 @@
-# FSND-P4-Design-A-Game
-Udacity Full Stack Nano Degree - Project 4
+# FSND-Design-A-Game
+Udacity Full Stack Nano Degree - Project: Design a Game
 
 ## Set-Up Instructions:
-1.  Update the value of application in app.yaml to the app ID you have registered
- in the App Engine admin console and would like to use to host your instance of this sample.
-1.  Run the app with the devserver using dev_appserver.py DIR, and ensure it's
- running by visiting the API Explorer - by default localhost:8080/_ah/api/explorer.
-1.  (Optional) Generate your client library(ies) with the endpoints tool.
- Deploy your application.
-
-##Game Description:
-Guess a number is a simple guessing game. Each game begins with a random 'target'
-number between the minimum and maximum values provided, and a maximum number of
-'attempts'. 'Guesses' are sent to the `make_move` endpoint which will reply
-with either: 'too low', 'too high', 'you win', or 'game over' (if the maximum
-number of attempts is reached).
-Many different Guess a Number games can be played by many different Users at any
-given time. Each game can be retrieved or played by using the path parameter
-`urlsafe_game_key`.
+1. Update the value of application in app.yaml to the app ID you have registered
+in the App Engine admin console and would like to use to host your instance of
+this sample.
+2. Run the app with the devserver using dev_appserver.py DIR, and ensure it's
+running by visiting the API Explorer
+    - by default localhost:8080/_ah/api/explorer.
+3. (Optional) Generate your client library(ies) with the endpoints tool. Deploy
+your application.
 
 ##Game Description - Concentration
-This game is based on the popular card game, Concentration!
+This game is based on the popular card game, Concentration! Players start by
+creating a game with a grid of 2x2, 4x4 or 8x8 cards. The cards (or items
+depending on the front end client) start face down. Players take turns by
+picking two cards from the grid. If two cards (or items) "match", the player
+"wins" the "pair", and the cards are taken out of play from the grid. If the
+cards don't match they are placed back in the grid face down. The game
+continues with players taking turns, picking pairs until there are no more
+cards left in play. At that point scores are tallied and the game ends.
 
 ###Game modes:
--	Single player, where the score is kept of turns taken to win
--	Two player, where the score is pairs won
+-	Single player: The player plays against herself with the high score being the
+least turns taken to "win" all the "pairs" in play.
+-	Two player: Two players take turns to "match" all the "pairs" in play. If a
+player matches a pair they are given another turn until they fail to select a
+matching pair of cards. The high score in two player mode is the number of
+pairs won.
+
+###Bonus Score - Consecutive Turns:
+During games, the number of consecutive turns where a pair was won are tracked.
+This bonus score is kept for single and two player games and for both players
+in two player games. There is a separate score board with the player scoring
+the most consecutive pairs in a game.
+
+###Bonus Score - User Ranking:
+A user ranking system is kept for user that participate in two player games.
+The score is worked out as a win : loss ratio.
 
 ###Rules:
 -	Player who creates the game selects board size of 2,4,8 squares.
@@ -35,9 +48,6 @@ This game is based on the popular card game, Concentration!
 - Once all cards have been removed from play the game is over.
 -	The player with the most pairs wins the game. The game can be tied if both
   players have the same amount of pairs.
-
-###Bonus Stats:
--	Most consecutive turns taken (by matching pairs) ordered by turns.
 
 ##Files Included:
 - api.py: Contains endpoints and game playing logic.
@@ -56,103 +66,157 @@ This game is based on the popular card game, Concentration!
     - Description: Creates a new User. user_name provided must be unique. Will
       raise a ConflictException if a User with that user_name already exists.
 
- - **new_game**
-    - Path: 'game'
+ - **new_game_p1**
+    - Path: 'newgamep1'
     - Method: POST
-    - Parameters: user_name_1, user_name_2, size
-    - Returns: GameForm with initial game state.
-    - Description: Creates a new Game. user_name_n provided must correspond to
-      an existing user - will raise a NotFoundException if not. Size must be
-      's','m','l' (small, medium, large).
+    - Parameters: user_name, size
+    - Returns: GameFormP1 with initial game state.
+    - Description: Creates a new single player game. user_name provided must
+      correspond to an existing user - will raise a NotFoundException if not.
+      Size must be 2, 4, 8.
 
- - **get_game**
-    - Path: 'game/{urlsafe_game_key}'
+ - **get_game_p1**
+    - Path: 'gamep1/{urlsafe_game_key}'
     - Method: GET
     - Parameters: urlsafe_game_key
-    - Returns: GameForm with current game state.
-    - Description: Returns the current state of a game.
+    - Returns: GameFormP1 with current game state.
+    - Description: Returns the current state of a single player game. Raises a
+      NotFoundException if a game can't be found using the urlsafe_game_key.
 
- - **make_move**
-    - Path: 'game/{urlsafe_game_key}'
-    - Method: PUT
-    - Parameters: urlsafe_game_key, user_name, loc
-    - Returns: GameForm with new game state.
-    - Description: Accepts a 'loc' and returns the updated state of the game.
-      If this causes a game to end, a corresponding Score entity will be
-      created.
-
- - **get_scores**
-    - Path: 'scores'
-    - Method: GET
-    - Parameters: None
-    - Returns: ScoreForms.
-    - Description: Returns all Scores in the database (unordered).
-
- - **get_user_scores**
-    - Path: 'scores/user/{user_name}'
+ - **active_games_p1**
+    - Path: 'activegamesp1'
     - Method: GET
     - Parameters: user_name
-    - Returns: ScoreForms.
-    - Description: Returns all Scores recorded by the provided player (unordered).
-      Will raise a NotFoundException if the User does not exist.
+    - Returns: A list of urlsafe_game_key's of active single player games.
+    - Description: The list of urlsafe_game_key are for single player games
+      where the user is the player, and the game game_over field set to False.
 
- - **get_active_game_count**
-    - Path: 'games/active'
-    - Method: GET
-    - Parameters: None
-    - Returns: StringMessage
-    - Description: Gets the number of games that are currently active.
-
-##To Implement:
- - **most_consecutive_turns**
-    - Path: 'consecutive'
-    - Method: GET
-    - Parameters: None
-    - Returns: ConsecutiveForms
-    - Description: Returns record of users and consecutive turns ordered by
-      turns.
-
- - **get_user_games**
-    - Path: 'user/{user_name}/games'
-    - Method: GET
-    - Parameters: None
-    - Returns: UserGamesForms
-    - Description: Gets details for users active games.
-
- - **cancel_game**
-    - Path: 'game/cancel/{urlsafe_game_key}'
+ - **make_move_p1**
+    - Path: 'gamep1/{urlsafe_game_key}'
     - Method: PUT
+    - Parameters: urlsafe_game_key, x1, x2, y1, y2
+    - Returns: GameFormP1 with new game state.
+    - Description: Accepts two co-ordinate pair (x1, y1), (x2, y2) and checks
+      if the cards at the co-ordinates are a matching pair.
+
+ - **cancel_game_p1**
+    - Path: 'gamep1/cancel/{urlsafe_game_key}'
+    - Method: GET
     - Parameters: urlsafe_game_key
-    - Returns: None??
-    - Description: Cancels an active game.
+    - Returns: GameFormP1 with game_over set to True.
+    - Description: Cancels an active game. Won't do anything meaningful if the
+      game has already ended. Will raise a NotFoundException error if an
+      invalid urlsafe_game_key is passed.
 
  - **get_high_scores_p1**
-    - Path: 'scores/p1/high_scores/{user_name}'
-    - Method: GET
-    - Parameters: user_name
-    - Returns: HighScoresP1Forms
-    - Description: High scores for single player mode.
-
- - **get_high_scores_p2**
-    - Path: 'scores/p2/high_scores/{user_name}'
-    - Method: GET
-    - Parameters: user_name
-    - Returns: HighScoresP2Forms
-    - Description: High scores for 2 player mode.
-
- - **get_user_rankings**
-    - Path: 'scores/user_rankings'
+    - Path: 'scoresp1'
     - Method: GET
     - Parameters: None
-    - Returns: UserRankingsForms
-    - Description: Player leaderboard for 2 player mode.
+    - Returns: ScoreFormsP1.
+    - Description: Returns all ScoreP1 (single player) high scores in the
+      database ordered by players with the least turns taken. The scores do not
+      count games that haven't been finished by matching all cards on the grid.
 
- - **get_game_history**
-    - Path: 'game/history/'
-    - Method: 'GET'
+ - **get_user_scores_p1**
+    - Path: 'scoresp1/user/{user_name}'
+    - Method: GET
+    - Parameters: user_name
+    - Returns: ScoreFormsP1 ordered by turns ascending.
+    - Description: returns all ScoreP1 scores for a given user. Raises a
+      NotFoundException if the User does not exist.
+
+ - **new_game_p2**
+    - Path: 'newgamep2'
+    - Method: POST
+    - Parameters: user_name1, user_name2, size
+    - Returns: GameFormP2 with initial game state.
+    - Description: Creates a new two player game. user_name_n provided must
+      correspond to an existing user - will raise a NotFoundException if not.
+      Size must be 2, 4, 8.
+
+ - **get_game_p2**
+    - Path: 'gamep2/{urlsafe_game_key}'
+    - Method: GET
     - Parameters: urlsafe_game_key
-    - Returns: GameHistoryForms
-    - Description: List of game state and player moves for a selected game.
+    - Returns: GameFormP2 with current game state.
+    - Description: Returns the current state of a two player game. Raises a
+      NotFoundException if a game can't be found using the urlsafe_game_key.
+
+ - **active_games_p2**
+    - Path: 'activegamesp2'
+    - Method: GET
+    - Parameters: user_name
+    - Returns: A list of urlsafe_game_key's of active two player games.
+    - Description: The list of urlsafe_game_key are for two player games
+      where the user is a player, and the games game_over field set to False.
+
+ - **make_move_p2**
+    - Path: 'gamep1/{urlsafe_game_key}'
+    - Method: PUT
+    - Parameters: urlsafe_game_key, x1, x2, y1, y2
+    - Returns: GameFormP2 with new game state.
+    - Description: Accepts two co-ordinate pair (x1, y1), (x2, y2) and checks
+      if the cards at the co-ordinates are a matching pair. Players will not be
+      allowed to make a move if it isn't their turn.
+
+ - **cancel_game_p2**
+    - Path: 'gamep1/cancel/{urlsafe_game_key}'
+    - Method: GET
+    - Parameters: urlsafe_game_key
+    - Returns: GameFormP2 with game_over set to True.
+    - Description: Cancels an active game. Won't do anything meaningful if the
+      game has already ended. Will raise a NotFoundException error if an
+      invalid urlsafe_game_key is passed.
+
+ - **get_high_scores_p2**
+    - Path: 'scoresp2'
+    - Method: GET
+    - Parameters: None
+    - Returns: ScoreFormsP2.
+    - Description: Returns all ScoreP2 (two player) high scores in the
+      database ordered by players with the most pairs won.
+
+ - **get_user_scores_p2**
+    - Path: 'scoresp2/user/{user_name}'
+    - Method: GET
+    - Parameters: user_name
+    - Returns: ScoreFormsP2 ordered by turns ascending.
+    - Description: Returns all ScoreP2 scores for a given user. Raises a
+      NotFoundException if the User does not exist.
+
+ - **get_game_history_p1**
+    - Path: 'historyp1/{urlsafe_game_key}'
+    - Method: GET
+    - Parameters: urlsafe_game_key
+    - Returns: GameHistoryForms. List of GameHistoryForm.
+    - Description: Returns a list of all moves taken during a single player
+      game. The game can have ended. Will raise a NotFoundException error if
+      the game doesn't exist.
+
+ - **get_game_history_p2**
+    - Path: 'historyp2/{urlsafe_game_key}'
+    - Method: GET
+    - Parameters: urlsafe_game_key
+    - Returns: GameHistoryForms. List of GameHistoryForm.
+    - Description: Returns a list of all moves taken during a two player game.
+      The game can have ended. Will raise a NotFoundException error if the game
+      doesn't exist.
+
+ - **get_consecutive_turn_scores**
+    - Path: 'consecutiveturns'
+    - Method: GET
+    - Parameters: None
+    - Returns: ConsecutiveForms. A list of ConsecutiveForm.
+    - Description: Returns list of users and their consecutive turns score
+      ordered by turns.
+
+ - **get_user_rankings**
+    - Path: 'rankings'
+    - Method: GET
+    - Parameters: None
+    - Returns: UserRankings. A list of User ordered by user_ranking.
+    - Description: Returns list of users and their user_ranking ordered by
+      user_ranking descending.
 
 ##Models Included:
 - **User**
@@ -171,24 +235,37 @@ This game is based on the popular card game, Concentration!
     KeyProperty.
 
 - **ScoreP2**
-  - Records completed 2 player games. Associated with Users model via
+  - Records completed two player games. Associated with Users model via
     KeyProperty.
 
-##Forms Included:
+- **ConsecutiveTurns**
+  - Records consecutive turn bonus score. Associated with Users model via
+    KeyProperty.
+
+##Forms Included (message classes):
+- **NewGameFormP1**
+  - Inbound form to create a new single player game.
+
+- **NewGameFormP2**
+  - Inbound form to create a new two player game.
+
 - **GameFormP1**
-  - Representation of a single player Game's state (`urlsafe_key`, `user_name`, `size`, `turns`, `game_over`, `message`).
+  - Representation of a single player Game's state.
 
 - **GameFormP2**
-  - Representation of a two player Game's state (`urlsafe_key`, `user_name1`, `user_name1_turns`, `user_name1_pairs`, `user_name2, `user_name2_turns`, `user_name2_pairs`, `size`, `game_over`, `message`).
+  - Representation of a two player Game's state.
 
-- **MakeMoveForm**
-  - Inbound make move form (`x`, `y`).
+- **MakeMoveFormP1**
+  - Inbound make move form (`x1`, `y`2), (`x2`, `y1`).
+
+- **MakeMoveFormP2**
+  - Inbound make move form (`x1`, `y`2), (`x2`, `y1`), user_name.
 
 - **ScoreFormP1**
-  - Representation of a single player completed game's Score (`user_name`, `date`, `won`, `turns`).
+  - Representation of a single player completed game's Score.
 
 - **ScoreFormP2**
-  - Representation of a two player completed game's Score (`user_name`, `date`, `won`, `turns`, `pairs`, `tie`).
+  - Representation of a two player completed game's Score.
 
 - **ScoreFormsP1**
   - Multiple ScoreFormP1 container.
@@ -200,38 +277,19 @@ This game is based on the popular card game, Concentration!
   - General purpose String container.
 
 - **ConsecutiveTurnsForm**
-  - Representation of most consecutive turns per player (`user_name`, `turns`, `board_size`).
+  - Representation of most consecutive turns per player (`user_name`, `turns`,          `board_size`).
 
 - **ConsecutiveTurnsForms**
   - Multiple ConsecutiveForm container.
 
-- **UserGameForm**
-  - Details about a users active game (`user_name`, `urlsafe_key`, `player_turn`, `turn`).
+- **UserRanking**
+  - Details about a users User ranking score.
 
-- **UserGameForms**
-  - Collection of UserGameForm; used to list all players active games.
-
-- **HighScoresP1Form**
-  - High score for single player mode (`user_name`, `turns`).
-
-- **HighScoresP1Forms**
-  - Collection of HighScoresP1Form.
-
-- **HighScoresP2Form**
-  - High score for two player mode (user_name, pairs).
-
-- **HighScoresP2Forms**
-  - Collection of HighScoresP2Form.
-
-##Forms to implement
-- **UserRankingsForm**
-  - (user_name, ration, pairs).
-
-- **UserRankingsForms**
-  - Multiple UserRankingsForm container.
+- **UserRankings**
+  - Collection of UserRanking; used to list all user ranking scores.
 
 - **GameHistoryForm**
-  - (urlsafe_key, user_name, turn, loc, pair=tue/false, won_flag).
+  - Details of co-ordinates and result taken by a player.
 
-- **GameHistoryForms
-  - Multiple GameHistoryForm container.
+- **GameHistoryForms**
+  - Collection of GameHistoryForm.

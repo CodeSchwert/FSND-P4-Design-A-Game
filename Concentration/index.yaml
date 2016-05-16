@@ -9,3 +9,43 @@ indexes:
 # manually, move them above the marker line.  The index.yaml file is
 # automatically uploaded to the admin console when you next deploy
 # your application using appcfg.py.
+
+- kind: ConsecutiveTurns
+  properties:
+  - name: turns
+  - name: size
+    direction: desc
+
+- kind: ConsecutiveTurns
+  properties:
+  - name: turns
+    direction: desc
+  - name: size
+    direction: desc
+
+- kind: ScoreP1
+  properties:
+  - name: user
+  - name: turns
+
+- kind: ScoreP1
+  properties:
+  - name: won
+  - name: turns
+
+- kind: ScoreP2
+  properties:
+  - name: pairs
+    direction: desc
+  - name: date
+    direction: desc
+
+- kind: ScoreP2
+  properties:
+  - name: user
+  - name: pairs
+
+- kind: User
+  properties:
+  - name: __key__
+  - name: email

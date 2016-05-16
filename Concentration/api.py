@@ -182,8 +182,9 @@ class ConcentrationGameApi(remote.Service):
                       name='get_high_scores_p1',
                       http_method='GET')
     def get_high_scores_p1(self, request):
-        """Get single player game high scores (turns taken)."""
-        scores = ScoreP1.query().order(ScoreP1.turns)
+        """Get single player game high scores (turns taken). Only includes
+        games which were won."""
+        scores = ScoreP1.query(ScoreP1.won == True).order(ScoreP1.turns)
         return ScoreFormsP1(items=[s.to_form() for s in scores])
 
     @endpoints.method(request_message=USER_SCORE_REQUEST,
@@ -310,33 +311,40 @@ class ConcentrationGameApi(remote.Service):
                 setattr(game, player_con_turns, getattr(game, player_con_temp))
             # update next players turn (current_turn) - take another turn
             setattr(game, 'current_turn', player)
-            # update user model
-            user.turns_p2 += 1
-            user.pairs_p2 += 1
         else:
             msg = "The pair doesn't match ..."
             setattr(game, player_turns, (getattr(game, player_turns) + 1))
             setattr(game, player_con_temp, 0)
             # update next players turn (current_turn) - next players turn
             setattr(game, 'current_turn', (1 if player == 2 else 2))
-            # update user model
-            user.turns_p2 += 1
         # update game "global" variables
         game.turns += 1
         game.card_map = json.dumps(card_map_dict)
         game.card_graveyard = json.dumps(graveyard_dict)
         game.update_game_history(player, selection1, selection2, msg)
         game.put()
-        # update user model - calculate two player user ranking
-        user.calculate_user_ranking()
         # end the game if all cards are removed from play
         if len(card_map_dict) is 0:
+            user1 = User.query(User.key == game.user1).get()
+            user2 = User.query(User.key == game.user2).get()
+            if not user1 or not user2:
+                raise endpoints.NotFoundException(
+                        'A User with that name does not exist!')
             msg = "Congratulations you found the last pair - Game Over!!"
             # determine winning player - most pairs
             if game.user1_pairs == game.user2_pairs:
                 winner = 0
+                user1.update_user_ranking_info(0)
+                user2.update_user_ranking_info(0)
             else:
                 winner = (1 if game.user1_pairs > game.user2_pairs else 2)
+            # update user stats
+            if winner == 1:
+                user1.update_user_ranking_info(1)
+                user2.update_user_ranking_info(-1)
+            elif winner == 2:
+                user1.update_user_ranking_info(-1)
+                user2.update_user_ranking_info(1)
             # end game ...
             game.end_game(winner=winner)
         # return game form
@@ -428,7 +436,7 @@ class ConcentrationGameApi(remote.Service):
     def get_consecutive_turn_scores(self, request):
         """Get a list of all consecutive turn scores."""
         consec_turns = ConsecutiveTurns.query()\
-            .order(ConsecutiveTurns.turns)\
+            .order(-ConsecutiveTurns.turns)\
             .order(-ConsecutiveTurns.size)
         return ConsecutiveTurnsForms(
             items=[ct.to_form() for ct in consec_turns])
@@ -441,8 +449,8 @@ class ConcentrationGameApi(remote.Service):
         """Two player user ranking - determined by pairs won / turns taken.
         This method just lists the rankings. Ranking information is updated at
         the end of each game turn."""
-        user_rankings = User.query().order(User.user_ranking)
+        user_rankings = User.query().order(-User.user_ranking)
         return UserRankings(
-            rankings=[ur.to_user_ranking_form for ur in user_rankings])
+            rankings=[ur.to_user_ranking_form() for ur in user_rankings])
 
 api = endpoints.api_server([ConcentrationGameApi])
