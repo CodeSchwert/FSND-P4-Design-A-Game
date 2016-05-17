@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-`
-"""api.py - Create and configure the Game API exposing the resources.
-This can also contain game logic. For more complex games it would be wise to
-move game logic to another file. Ideally the API will be simple, concerned
-primarily with communication to/from the API's users."""
+"""api.py - Concentration Game API exposing the endpoint resources.
+The API contains both game logic and communication to/from the API."""
 
 import datetime
 import logging
@@ -13,14 +11,29 @@ from protorpc import message_types
 from google.appengine.api import memcache
 from google.appengine.api import taskqueue
 from google.appengine.ext import ndb
-# import ndb models
+# import ndb (storage) models
 from models import User, GameP1, GameP2, ScoreP1, ScoreP2, ConsecutiveTurns
 # import message classes
-from models import StringMessage, NewGameFormP1, NewGameFormP2, GameFormP1, \
-    GameFormP2, MakeMoveFormP1, MakeMoveFormP2, ActiveGamesForm, \
-    ConsecutiveTurnsForm, ConsecutiveTurnsForms, ScoreFormP1, ScoreFormsP1, \
-    ScoreFormP2, ScoreFormsP2, UserRanking, UserRankings, GameHistoryForm, \
+from messages import (
+    NewGameFormP1,
+    NewGameFormP2,
+    GameFormP1,
+    GameFormP2,
+    MakeMoveFormP1,
+    MakeMoveFormP2,
+    ActiveGamesForm,
+    ScoreFormP1,
+    ScoreFormsP1,
+    ScoreFormP2,
+    ScoreFormsP2,
+    StringMessage,
+    ConsecutiveTurnsForm,
+    ConsecutiveTurnsForms,
+    UserRanking,
+    UserRankings,
+    GameHistoryForm,
     GameHistoryForms
+)
 from utils import get_by_urlsafe
 
 USER_REQUEST = endpoints.ResourceContainer(user_name=messages.StringField(1),
@@ -35,9 +48,7 @@ MAKE_MOVE_REQUEST_P1 = endpoints.ResourceContainer(
 MAKE_MOVE_REQUEST_P2 = endpoints.ResourceContainer(
     MakeMoveFormP2,
     urlsafe_game_key=messages.StringField(1),)
-ACTIVE_GAMES_REQUEST = endpoints.ResourceContainer(
-    user_name=messages.StringField(1))
-USER_SCORE_REQUEST = endpoints.ResourceContainer(
+USER_RESOURCE_REQUEST = endpoints.ResourceContainer(
     user_name=messages.StringField(1))
 
 
@@ -50,7 +61,14 @@ class ConcentrationGameApi(remote.Service):
                       name='create_user',
                       http_method='POST')
     def create_user(self, request):
-        """Create a User. Requires a unique username."""
+        """Create a User. Requires a unique username.
+        Args:
+            user_name: A user name string.
+            email: Optional, valid email. Not validated.
+        Returns:
+            StringMessage with a welcome message!
+        Raises:
+            ConflictException: when user already exists."""
         if User.query(User.name == request.user_name).get():
             raise endpoints.ConflictException(
                     'A User with that name already exists!')
@@ -65,7 +83,15 @@ class ConcentrationGameApi(remote.Service):
                       name='new_game_p1',
                       http_method='POST')
     def new_game_p1(self, request):
-        """Creates new single player game."""
+        """Creates new single player game.
+        Args:
+            user_name: Player user name.
+            size: Size of the game board, valid values [2, 4, 8].
+        Returns:
+            GameP1 form representation of the game state.
+        Raises:
+            NotFoundException: when user doesn't exist.
+            BadRequestException on invalid size."""
         user = User.query(User.name == request.user_name).get()
         if not user:
             raise endpoints.NotFoundException(
@@ -83,7 +109,13 @@ class ConcentrationGameApi(remote.Service):
                       name='get_game_p1',
                       http_method='GET')
     def get_game_p1(self, request):
-        """Return the current single player game state."""
+        """Return the current single player game state.
+        Args:
+            urlsafe_game_key: A urlsafe key string.
+        Returns:
+            GameP1 form representation of the game state.
+        Raises:
+            NotFoundException: if the game doesn't exist."""
         game = get_by_urlsafe(request.urlsafe_game_key, GameP1)
         if game:
             if game.game_over:
@@ -93,13 +125,19 @@ class ConcentrationGameApi(remote.Service):
         else:
             raise endpoints.NotFoundException('Game not found!')
 
-    @endpoints.method(request_message=ACTIVE_GAMES_REQUEST,
+    @endpoints.method(request_message=USER_RESOURCE_REQUEST,
                       response_message=ActiveGamesForm,
                       path='activegamesp1',
                       name='active_games_p1',
                       http_method='GET')
     def active_games_p1(self, request):
-        """List all active single player games for a user."""
+        """List all active single player games for a user.
+        Args:
+            user_name: User name string.
+        Returns:
+            A list of urlsafe_game_key.
+        Raises:
+            NotFoundException: if user doesn't exist."""
         user = User.query(User.name == request.user_name).get()
         if not user:
             raise endpoints.NotFoundException(
@@ -114,7 +152,14 @@ class ConcentrationGameApi(remote.Service):
                       name='make_move_p1',
                       http_method='PUT')
     def make_move_p1(self, request):
-        """Makes a move. Returns a game state with message."""
+        """Makes a move. Returns a game state with message.
+        Args:
+            x1: First co-ordinate x position
+            x2: Second co-ordinate x position
+            y1: First co-ordinate y position
+            y2: Second co-ordinate y position
+        Returns:
+            GameP1 form representation of the game state."""
         game = get_by_urlsafe(request.urlsafe_game_key, GameP1)
         if game.game_over:
             return game.to_form('Game already over!')
@@ -164,9 +209,15 @@ class ConcentrationGameApi(remote.Service):
                       response_message=GameFormP1,
                       path='gamep1/cancel/{urlsafe_game_key}',
                       name='cancel_game_p1',
-                      http_method='GET')
+                      http_method='PUT')
     def cancel_game_p1(self, request):
-        """Cancel a single player game."""
+        """Cancel a single player game.
+        Args:
+            urlsafe: A urlsafe key string.
+        Returns:
+            GameP1 form representation of the game state.
+        Raises:
+            NotFoundException: if game doesn't exist."""
         game = get_by_urlsafe(request.urlsafe_game_key, GameP1)
         if game:
             if game.game_over:
@@ -183,18 +234,28 @@ class ConcentrationGameApi(remote.Service):
                       http_method='GET')
     def get_high_scores_p1(self, request):
         """Get single player game high scores (turns taken). Only includes
-        games which were won."""
+        games which were won.
+        Args:
+            None.
+        Returns:
+            List of ScoreP1 - ordered by turns ascending."""
         scores = ScoreP1.query(ScoreP1.won == True).order(ScoreP1.turns)
         return ScoreFormsP1(items=[s.to_form() for s in scores])
 
-    @endpoints.method(request_message=USER_SCORE_REQUEST,
+    @endpoints.method(request_message=USER_RESOURCE_REQUEST,
                       response_message=ScoreFormsP1,
                       path='scoresp1/user/{user_name}',
                       name='get_user_scores_p1',
                       http_method='GET')
     def get_user_scores_p1(self, request):
         """Returns all single player game scores for a user - ordered by turns
-        taken."""
+        taken.
+        Args:
+            user_name: User name string.
+        Returns:
+            List of ScoreP1 - all scores for given user.
+        Raises:
+            NotFoundException: if user doesn't exist."""
         user = User.query(User.name == request.user_name).get()
         if not user:
             raise endpoints.NotFoundException(
@@ -208,7 +269,16 @@ class ConcentrationGameApi(remote.Service):
                       name='new_game_p2',
                       http_method='POST')
     def new_game_p2(self, request):
-        """Create a new two player game."""
+        """Create a new two player game.
+        Args:
+            user_name1: Player 1 user name.
+            user_name2: Player 2 user name.
+            size: Size of the game board, valid values [2, 4, 8].
+        Returns:
+            GameP2 form representation of the game state.
+        Raises:
+            NotFoundException: if either of the players doesn't exist.
+            BadRequestException: when invalid size passed."""
         user1 = User.query(User.name == request.user_name1).get()
         user2 = User.query(User.name == request.user_name2).get()
         if not user1 or not user2:
@@ -227,7 +297,13 @@ class ConcentrationGameApi(remote.Service):
                       name='get_game_p2',
                       http_method='GET')
     def get_game_p2(self, request):
-        """Get two player game state information."""
+        """Get two player game state information.
+        Args:
+            urlsafe_game_key: A urlsafe key string.
+        Returns:
+            GameP2 form representation of the game state.
+        Raises:
+            NotFoundException: if the game doesn't exist."""
         game = get_by_urlsafe(request.urlsafe_game_key, GameP2)
         if game:
             if game.game_over:
@@ -237,13 +313,19 @@ class ConcentrationGameApi(remote.Service):
         else:
             raise endpoints.NotFoundException('Game not found!')
 
-    @endpoints.method(request_message=ACTIVE_GAMES_REQUEST,
+    @endpoints.method(request_message=USER_RESOURCE_REQUEST,
                       response_message=ActiveGamesForm,
                       path='activegamesp2',
                       name='active_games_p2',
                       http_method='GET')
     def active_games_p2(self, request):
-        """List all active two player games for a user."""
+        """List all active two player games for a user.
+        Args:
+            user_name: User name string.
+        Returns:
+            A list of urlsafe_game_key.
+        Raises:
+            NotFoundException: if user doesn't exist."""
         user = User.query(User.name == request.user_name).get()
         if not user:
             raise endpoints.NotFoundException(
@@ -259,7 +341,17 @@ class ConcentrationGameApi(remote.Service):
                       name='make_move_p2',
                       http_method='PUT')
     def make_move_p2(self, request):
-        """Make move in two player game. Returns game state with message."""
+        """Make move in two player game. Returns game state with message.
+        Args:
+            x1: First co-ordinate x position.
+            x2: Second co-ordinate x position.
+            y1: First co-ordinate y position.
+            y2: Second co-ordinate y position.
+            user_name: User name string.
+        Returns:
+            GameP2 form representation of the game state.
+        Raises:
+            NotFoundException: if user doesn't exist."""
         game = get_by_urlsafe(request.urlsafe_game_key, GameP2)
         if game.game_over:
             return game.to_form('Game already over!')
@@ -354,9 +446,15 @@ class ConcentrationGameApi(remote.Service):
                       response_message=GameFormP2,
                       path='gamep2/cancel/{urlsafe_game_key}',
                       name='cancel_game_p2',
-                      http_method='GET')
+                      http_method='PUT')
     def cancel_game_p2(self, request):
-        """Cancel a two player game."""
+        """Cancel a two player game.
+        Args:
+            urlsafe: A urlsafe key string.
+        Returns:
+            GameP2 form representation of the game state.
+        Raises:
+            NotFoundException: if game doesn't exist."""
         game = get_by_urlsafe(request.urlsafe_game_key, GameP2)
         if game:
             if game.game_over:
@@ -372,18 +470,29 @@ class ConcentrationGameApi(remote.Service):
                       name='get_high_scores_p2',
                       http_method='GET')
     def get_high_scores_p2(self, request):
-        """Get two player game high scores (pairs won)."""
+        """Get two player game high scores (pairs won).
+        Args:
+            None.
+        Returns:
+            List of ScoreP2 - ordered by pairs descending then by date
+            descending."""
         scores = ScoreP2.query().order(-ScoreP2.pairs).order(-ScoreP2.date)
         return ScoreFormsP2(items=[s.to_form() for s in scores])
 
-    @endpoints.method(request_message=USER_SCORE_REQUEST,
+    @endpoints.method(request_message=USER_RESOURCE_REQUEST,
                       response_message=ScoreFormsP2,
                       path='scoresp2/user/{user_name}',
                       name='get_user_scores_p2',
                       http_method='GET')
     def get_user_scores_p2(self, request):
         """Returns all two player game scores for a user - ordered by pairs
-        won."""
+        won.
+        Args:
+            user_name: User name string.
+        Returns:
+            List of ScoreP2 - all scores for given user.
+        Raises:
+            NotFoundException: if user doesn't exist."""
         user = User.query(User.name == request.user_name).get()
         if not user:
             raise endpoints.NotFoundException(
@@ -397,9 +506,14 @@ class ConcentrationGameApi(remote.Service):
                       name='get_game_history_p1',
                       http_method='GET')
     def get_game_history_p1(self, request):
-        """Game history - get a list of game moves (single player games)."""
-        # each move is recorded as:
-        #     (turn, player: 1||2, coord1: (x, y), coord2: (x, y), result: msg)
+        """Game history - get a list of game moves (single player games).
+        Args:
+            urlsafe: A urlsafe key string.
+        Returns:
+            A list of GameHistoryForm -
+                (turns, player, coord1, coord2, move_result)
+        Raises:
+            NotFoundException: if the game doesn't exist."""
         game = get_by_urlsafe(request.urlsafe_game_key, GameP1)
         if not game:
             raise endpoints.NotFoundException('Game not found!')
@@ -416,7 +530,14 @@ class ConcentrationGameApi(remote.Service):
                       name='get_game_history_p2',
                       http_method='GET')
     def get_game_history_p2(self, request):
-        """Game history - get a list of game moves (two player games)."""
+        """Game history - get a list of game moves (two player games).
+        Args:
+            urlsafe: A urlsafe key string.
+        Returns:
+            A list of GameHistoryForm -
+                (turns, player, coord1, coord2, move_result)
+        Raises:
+            NotFoundException: if the game doesn't exist."""
         # each move is recorded as:
         #     (turn, player: 1||2, coord1: (x, y), coord2: (x, y), result: msg)
         game = get_by_urlsafe(request.urlsafe_game_key, GameP2)
@@ -434,7 +555,12 @@ class ConcentrationGameApi(remote.Service):
                       name='get_consecutive_turn_scores',
                       http_method='GET')
     def get_consecutive_turn_scores(self, request):
-        """Get a list of all consecutive turn scores."""
+        """Get a list of all consecutive turn scores.
+        Args:
+            None.
+        Returns:
+            A list of ConsecutiveTurns (forms) - ordered by turns descending
+            then by size descending."""
         consec_turns = ConsecutiveTurns.query()\
             .order(-ConsecutiveTurns.turns)\
             .order(-ConsecutiveTurns.size)
@@ -448,7 +574,11 @@ class ConcentrationGameApi(remote.Service):
     def get_user_rankings(self, request):
         """Two player user ranking - determined by pairs won / turns taken.
         This method just lists the rankings. Ranking information is updated at
-        the end of each game turn."""
+        the end of each game turn.
+        Args:
+            None.
+        Returns:
+            A list of UserRanking (form) ordered by user_ranking descending."""
         user_rankings = User.query().order(-User.user_ranking)
         return UserRankings(
             rankings=[ur.to_user_ranking_form() for ur in user_rankings])

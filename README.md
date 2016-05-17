@@ -54,7 +54,8 @@ The score is worked out as a win : loss ratio.
 - app.yaml: App configuration.
 - cron.yaml: Cronjob configuration.
 - main.py: Handler for taskqueue handler.
-- models.py: Entity and message definitions including helper methods.
+- messages.py: Message definitions.
+- models.py: Entity definitions including helper methods.
 - utils.py: Helper function for retrieving ndb.Models by urlsafe Key string.
 
 ##Endpoints Included:
@@ -101,7 +102,7 @@ The score is worked out as a win : loss ratio.
 
  - **cancel_game_p1**
     - Path: 'gamep1/cancel/{urlsafe_game_key}'
-    - Method: GET
+    - Method: PUT
     - Parameters: urlsafe_game_key
     - Returns: GameFormP1 with game_over set to True.
     - Description: Cancels an active game. Won't do anything meaningful if the
@@ -161,7 +162,7 @@ The score is worked out as a win : loss ratio.
 
  - **cancel_game_p2**
     - Path: 'gamep1/cancel/{urlsafe_game_key}'
-    - Method: GET
+    - Method: PUT
     - Parameters: urlsafe_game_key
     - Returns: GameFormP2 with game_over set to True.
     - Description: Cancels an active game. Won't do anything meaningful if the
